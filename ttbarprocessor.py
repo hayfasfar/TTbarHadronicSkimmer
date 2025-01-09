@@ -303,14 +303,6 @@ class TTbarResProcessor(processor.ProcessorABC):
             return self.process_analysis(events, 'nominal', nEvents)
         
         
-     #   if isData:
-     #       
-     #       return processor.accumulate([
-     #           self.process_analysis(events, 'nominal', nEvents),
-     #           self.process_analysis(events, 'hemVeto', nEvents)
-     #       ]) 
-        
-        
         FatJets = events.FatJet
         GenJets = events.GenJet
         Jets = events.Jet
@@ -377,62 +369,7 @@ class TTbarResProcessor(processor.ProcessorABC):
                 ({"Jet": corrected_jets.JER.down, "FatJet": corrected_fatjets.JER.down}, "jerDown"),
             ])
             
-            
         
-            
-#         if ('hem' in self.systematics) and ('2018' in self.iov):
-            
-#             if 'hemVeto' in self.systematics:
-                
-            
-#                 corrections.extend([
-#                     ({"Jet": corrected_jets, "FatJet": corrected_fatjets}, "hemVeto"),
-#                     ])
-
-            
-#             corrected_jets_hem    = HEMCleaning(corrected_jets)
-#             corrected_fatjets_hem = HEMCleaning(corrected_fatjets)
-
-#             corrections.extend([
-#             ({"Jet": corrected_jets_hem, "FatJet": corrected_fatjets_hem}, "hem"),
-#             ])
-            
-#             corrections.extend([
-#             ({"Jet": Jets, "FatJet": FatJets}, "hem"),
-#             ])
-
-                
-
-        
-        
-#         # get nominal output
-#         output_total = self.process_analysis(update(events, corrections[0][0]), 'nominal', nEvents)
-        
-# #         logger.debug('output:%s:nominal:%s:%s', time.time(), output_total['cutflow'], output_total['systematics'])
-# #         logger.debug('output:%s:nominal:%s', time.time(), output_total['weights'])
-        
-#         # loop through corrections
-#         outputs = {}
-#         for collections, name in corrections[1:]:
-#             process_output = self.process_analysis(update(events, collections), name, nEvents)
-#             outputs[name] = process_output
-            
-# #             logger.debug('output:%s:%s:%s', time.time(), name, process_output['weights'])
-
-
-#         # combine outputs
-#         for name, output_correction in outputs.items():
-#             for key in output_total.keys():
-
-#                 if 'hist' in str(type(output_total[key])):
-#                     if 'systematic' in list(output_total[key].axes.name):
-#                         output_total[key] += output_correction[key]
-
-#                 elif 'accumulator' in str(type(output_total[key])):
-#                     if key != 'cutflow':
-#                         output_total[key][name] = process_output[key][name]
-
-
         
         # loop through corrections
         outputs = []
@@ -733,19 +670,7 @@ class TTbarResProcessor(processor.ProcessorABC):
         SubJet10 = ak.flatten(SubJets[ak.unflatten(jet1.subJetIdx1, np.ones(len(FatJets), dtype='i'))])
         SubJet11 = ak.flatten(SubJets[ak.unflatten(jet1.subJetIdx2, np.ones(len(FatJets), dtype='i'))])
 
-        # print('\n----subjets----')
 
-        # print('SubJet00.pt', SubJet00.pt, events.event[0], correction)
-        # print('SubJet01.pt', SubJet01.pt, events.event[0], correction)
-        # print('SubJet10.pt', SubJet10.pt, events.event[0], correction)
-        # print('SubJet11.pt', SubJet11.pt, events.event[0], correction)
-        # print('SubJet00.btagDeepB', SubJet00.btagDeepB, events.event[0], correction)
-        # print('SubJet01.btagDeepB', SubJet01.btagDeepB, events.event[0], correction)
-        # print('SubJet10.btagDeepB', SubJet10.btagDeepB, events.event[0], correction)
-        # print('SubJet11.btagDeepB', SubJet11.btagDeepB, events.event[0], correction)
-        
-        # print('----subjets----\n')
-    
         
         
 
@@ -787,16 +712,9 @@ class TTbarResProcessor(processor.ProcessorABC):
     
         # rapidity, btag and top tag categories
         regs = {'cen': cen, 'fwd': fwd}
-        #btags = {'0b': btag0, '1b':btag1, '2b':btag2}
         ttags = {
             "at":antitag, # 2Dalphabet fail region
             "2t":ttag2, # 2Dalphabet pass region
-            # "AT&Pt": antitag_probe, 
-            #  "pret":pretag, 
-            #  "0t":ttag0, 
-            #  "1t":ttag1, 
-            #  ">=1t":ttagI, 
-            #  ">=0t":Alltags
                 }
         
         
