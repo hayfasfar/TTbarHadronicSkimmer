@@ -52,7 +52,6 @@ from functions import getRapidity
 
 
 
-# logging
 # logfile = 'coffea_' + str(int(time.time())) + '.log'
 # print(logfile)
 # logging.basicConfig(filename=logfile, level=logging.DEBUG)
