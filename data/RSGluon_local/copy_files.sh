@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# Create an array of file paths
+files=(
+    "/store/mc/RunIISummer20UL17NanoAODv9/RSGluonToTT_M-4500_TuneCP5_13TeV-pythia8/NANOAODSIM/106X_mc2017_realistic_v9-v1/270000/156FAB3E-F9FF-9448-9107-9A837120323A.root"
+    "/store/mc/RunIISummer20UL17NanoAODv9/RSGluonToTT_M-4500_TuneCP5_13TeV-pythia8/NANOAODSIM/106X_mc2017_realistic_v9-v1/130000/7767F62E-74F2-704F-A13A-9F34B19FD8D6.root"
+    "/store/mc/RunIISummer20UL17NanoAODv9/RSGluonToTT_M-4500_TuneCP5_13TeV-pythia8/NANOAODSIM/106X_mc2017_realistic_v9-v1/270000/D91905E2-86ED-1C47-8B19-5E0E699AC859.root"
+    "/store/mc/RunIISummer20UL17NanoAODv9/RSGluonToTT_M-4500_TuneCP5_13TeV-pythia8/NANOAODSIM/106X_mc2017_realistic_v9-v1/270000/43633794-ABAF-8C4F-88D4-7440CAFFF03C.root"
+    "/store/mc/RunIISummer20UL17NanoAODv9/RSGluonToTT_M-4500_TuneCP5_13TeV-pythia8/NANOAODSIM/106X_mc2017_realistic_v9-v1/270000/DD96C645-D059-F04F-AC4F-21C4C567B5C6.root"
+    "/store/mc/RunIISummer20UL17NanoAODv9/RSGluonToTT_M-4500_TuneCP5_13TeV-pythia8/NANOAODSIM/106X_mc2017_realistic_v9-v1/280000/5AB48672-8ED5-D94A-A06D-60E9469F40B9.root"
+    "/store/mc/RunIISummer20UL17NanoAODv9/RSGluonToTT_M-4500_TuneCP5_13TeV-pythia8/NANOAODSIM/106X_mc2017_realistic_v9-v1/130000/46E559FE-1F19-394C-B672-C24E83F7D86B.root"
+    "/store/mc/RunIISummer20UL17NanoAODv9/RSGluonToTT_M-4500_TuneCP5_13TeV-pythia8/NANOAODSIM/106X_mc2017_realistic_v9-v1/270000/96F77DDA-C09B-094B-98A0-3DB46C4E7F35.root"
+    "/store/mc/RunIISummer20UL17NanoAODv9/RSGluonToTT_M-4500_TuneCP5_13TeV-pythia8/NANOAODSIM/106X_mc2017_realistic_v9-v1/270000/679CA7B3-1079-1441-AAD7-CE0B7AB05CF9.root"
+    "/store/mc/RunIISummer20UL17NanoAODv9/RSGluonToTT_M-4500_TuneCP5_13TeV-pythia8/NANOAODSIM/106X_mc2017_realistic_v9-v1/130000/CA3F8077-A9BD-2B47-8747-FA8401D0C7E5.root"
+    "/store/mc/RunIISummer20UL17NanoAODv9/RSGluonToTT_M-4500_TuneCP5_13TeV-pythia8/NANOAODSIM/106X_mc2017_realistic_v9-v1/270000/11FA0BD9-16E7-A246-BE63-DF20F0F9143C.root"
+    "/store/mc/RunIISummer20UL17NanoAODv9/RSGluonToTT_M-4500_TuneCP5_13TeV-pythia8/NANOAODSIM/106X_mc2017_realistic_v9-v1/280000/AFEA9422-FDFB-6F47-AAC5-DB8A6A92A16E.root"
+    "/store/mc/RunIISummer20UL17NanoAODv9/RSGluonToTT_M-4500_TuneCP5_13TeV-pythia8/NANOAODSIM/106X_mc2017_realistic_v9-v1/130000/FBB7D99A-F0AC-1640-AA15-DDE814828617.root"
+)
+
+# Loop over the files and copy each one
+for file in "${files[@]}"; do
+    xrdcp "root://cmsxrootd.fnal.gov//$file" .
+done
+
