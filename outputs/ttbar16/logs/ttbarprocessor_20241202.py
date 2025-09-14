@@ -52,6 +52,7 @@ from functions import getRapidity
 
 
 
+# logging
 # logfile = 'coffea_' + str(int(time.time())) + '.log'
 # print(logfile)
 # logging.basicConfig(filename=logfile, level=logging.DEBUG)
@@ -174,6 +175,20 @@ class TTbarResProcessor(processor.ProcessorABC):
             } 
         }
     
+        btagcuts = {
+            'loose':{
+                '2016APV': 0.2027, 
+                '2016':    0.1918,
+                '2017':    0.1355,
+                '2018':    0.1208,
+            },
+            'medium':{
+                '2016APV': 0.6001, 
+                '2016':    0.5847,
+                '2017':    0.4506,
+                '2018':    0.4506,
+            } 
+        }
         
         
         self.weights = {}
@@ -191,6 +206,10 @@ class TTbarResProcessor(processor.ProcessorABC):
         else:
             self.deepAK8low = 0.2
         
+        if self.useDeepCSV:
+            self.bdisc = btagcuts['medium'][self.iov]
+        else:
+            self.bdisc = 0.8484
         
         
         
@@ -221,14 +240,25 @@ class TTbarResProcessor(processor.ProcessorABC):
         ttbarmass_axis   = hist.axis.Regular(50, 800, 8000, name="ttbarmass", label=r"$m_{t\bar{t}}$ [GeV]")
         jetmass_axis     = hist.axis.Regular(50, 0, 500, name="jetmass", label=r"Jet $m$ [GeV]")
         jetmsd_axis      = hist.axis.Regular(20, 0, 500, name="jetmass", label=r"Jet $m_{SD}$ [GeV]")
-        ttbarmass2D_axis = hist.axis.Regular(92, 800, 10000, name="ttbarmass", label=r"$m_{t\bar{t}}$ [GeV]")
+        ttbarmass2D_axis = hist.axis.Regular(60, 800, 6800, name="ttbarmass", label=r"$m_{t\bar{t}}$ [GeV]")
         jetmass2D_axis   = hist.axis.Regular(100, 0, 500, name="jetmass", label=r"Jet $m_{SD}$ [GeV]")
+        jetpt_axis       = hist.axis.Regular(40, 400, 2000, name="jetpt", label=r"Jet $p_{T}$ [GeV]")
+        jetpt_all_axis       = hist.axis.Regular(50, 0, 2000, name="jetpt", label=r"Jet $p_{T}$ [GeV]")
+        jetp_axis        = hist.axis.Regular(100, 400, 3600, name="jetp", label=r"Jet $p$ [GeV]")
         ht_axis        = hist.axis.Regular(40, 400, 4400, name="ht", label=r"$H_T$ [GeV]")
+        jeteta_axis      = hist.axis.Regular(50, -2.4, 2.4, name="jeteta", label=r"Jet $\eta$")
+        jety_axis      = hist.axis.Regular(50, -3, 3, name="jety", label=r"Jet $y$")
+        jetdy_axis      = hist.axis.Regular(50, -3, 3, name="jetdy", label=r"$\Delta y$")
+        jetphi_axis      = hist.axis.Regular(50, -np.pi, np.pi, name="jetphi", label=r"Jet $\phi$")
+        deltaphi_axis      = hist.axis.Regular(50, 0, 5, name="deltaphi", label=r"$\Delta \phi$")
         cats_axis        = hist.axis.IntCategory(range(len(self.anacats)), name="anacat", label="Analysis Category")
         manual_axis      = hist.axis.Variable(manual_bins, name="jetp", label=r"Jet Momentum [GeV]")
+        btag_axis        = hist.axis.Regular(10, 0, 1, name="bdisc", label=r"DeepCSV")
+        ttag_axis        = hist.axis.Regular(20, 0, 1, name="tdisc", label=r"DeepAK8")
         nsub_axis        = hist.axis.Regular(10, 0, 1, name="nsub", label=r"$\tau_{3} / \tau_{2}$")
         njet_axis        = hist.axis.Regular(10,1,11, name="njet", label=r"$N_{FatJet}$")
-        jetdy_axis      = hist.axis.Regular(50, -3, 3, name="jetdy", label=r"$\Delta y$")
+        met_axis        = hist.axis.Regular(30,0,200, name="met", label=r"met [GeV]")
+
         
         # output
         self.histo_dict = {
@@ -241,16 +271,71 @@ class TTbarResProcessor(processor.ProcessorABC):
             'denominator': hist.Hist(cats_axis, manual_axis, storage="weight", name="Counts"),
             'jetmass' : hist.Hist(syst_axis, cats_axis, jetmass2D_axis, storage="weight", name="Counts"),
             'jetmsd' : hist.Hist(syst_axis, cats_axis, jetmsd_axis, storage="weight", name="Counts"),
+            'jetpt'  : hist.Hist(syst_axis, cats_axis, jetpt_axis, storage="weight", name="Counts"),
+            'jetpt_nocut'  : hist.Hist(jetpt_all_axis, storage="weight", name="Counts"),
+            'jeteta_nocut'  : hist.Hist(jeteta_axis, storage="weight", name="Counts"),
+            'jety_nocut'  : hist.Hist(jeteta_axis, storage="weight", name="Counts"),
+            'jetphi_nocut'  : hist.Hist(jetphi_axis, storage="weight", name="Counts"),
+            'deltaPhi'  : hist.Hist(deltaphi_axis, storage="weight", name="Counts"),
+            'jeteta'  : hist.Hist(syst_axis, cats_axis, jeteta_axis, storage="weight", name="Counts"),
+            'jety'  : hist.Hist(syst_axis, cats_axis, jety_axis, storage="weight", name="Counts"),
             'jetdy'  : hist.Hist(syst_axis, cats_axis, jetdy_axis, storage="weight", name="Counts"),
+            'jetphi'  : hist.Hist(syst_axis, cats_axis, jetphi_axis, storage="weight", name="Counts"),
+            'jetp'  : hist.Hist(syst_axis, cats_axis, jetp_axis, storage="weight", name="Counts"),
+            'met' :  hist.Hist(syst_axis, cats_axis, met_axis, storage="weight", name="Counts"),
+
             # second leading jet
+            'jeteta1'  : hist.Hist(syst_axis, cats_axis, jeteta_axis, storage="weight", name="Counts"),
+            'jety1'  : hist.Hist(syst_axis, cats_axis, jety_axis, storage="weight", name="Counts"),
+            'jetdy1'  : hist.Hist(syst_axis, cats_axis, jetdy_axis, storage="weight", name="Counts"),
+            'jetphi1'  : hist.Hist(syst_axis, cats_axis, jetphi_axis, storage="weight", name="Counts"),
+            'jetp1'  : hist.Hist(syst_axis, cats_axis, jetp_axis, storage="weight", name="Counts"),
             'jetmass1' : hist.Hist(syst_axis, cats_axis, jetmass2D_axis, storage="weight", name="Counts"),
             'jetmsd1' : hist.Hist(syst_axis, cats_axis, jetmsd_axis, storage="weight", name="Counts"),
+            'jetpt1'  : hist.Hist(syst_axis, cats_axis, jetpt_axis, storage="weight", name="Counts"),
 
             
             'ht'  : hist.Hist(syst_axis, cats_axis, ht_axis, storage="weight", name="Counts"),
+
+#             'discriminators'  : hist.Hist(cats_axis,
+#                                           jetp_axis,
+#                                           btag_axis,
+#                                           ttag_axis,
+#                                           nsub_axis,
+#                                           storage="weight", name="Counts"),
+#             'deepak8'  : hist.Hist(cats_axis,
+#                                           jetp_axis,
+#                                           ttbarmass_axis,
+#                                           ttag_axis,
+#                                           storage="weight", name="Counts"),
             
             
             'mtt_vs_mt' : hist.Hist(syst_axis, cats_axis, jetmass2D_axis, ttbarmass2D_axis, storage="weight", name="Counts"),
+            # 'mtt_vs_mt_vs_tdisc' : hist.Hist(syst_axis, cats_axis, jetmass2D_axis, ttbarmass2D_axis, ttag_axis, storage="weight", name="Counts"),
+            
+            'mt_pt_tdisc_jet0' : hist.Hist(syst_axis, cats_axis, jetmsd_axis, jetpt_axis, ttag_axis, storage="weight", name="Counts"),
+            'mt_pt_tdisc_jet1' : hist.Hist(syst_axis, cats_axis, jetmsd_axis, jetpt_axis, ttag_axis, storage="weight", name="Counts"),
+
+
+
+            
+            # 'deepak8_over_jetp': hist.Hist(cats_axis, ttag_axis, jetp_axis, storage="weight", name="Counts"),
+            # 'tau32_over_jetp': hist.Hist(cats_axis, nsub_axis, jetp_axis, storage="weight", name="Counts"),
+            # 'bdisc_over_jetpt': hist.Hist(cats_axis, btag_axis, jetp_axis, storage="weight", name="Counts"),
+            
+            
+            # checking cuts #
+            
+            'FatJet_mass_before_cuts': hist.Hist(jetmass2D_axis, storage="weight", name="Counts"),
+            'FatJet_mass_after_cuts' : hist.Hist(jetmass2D_axis, storage="weight", name="Counts"),
+            'FatJet_pt_before_cuts'  : hist.Hist(jetpt_all_axis, storage="weight", name="Counts"),
+            'FatJet_pt_after_cuts'   : hist.Hist(jetpt_all_axis, storage="weight", name="Counts"),
+            'FatJet_eta_before_cuts' : hist.Hist(jeteta_axis, storage="weight", name="Counts"),
+            'FatJet_eta_after_cuts'  : hist.Hist(jeteta_axis, storage="weight", name="Counts"),
+            'ht_before_cuts'         : hist.Hist(ht_axis, storage="weight", name="Counts"),
+            'ht_after_cuts'          : hist.Hist(ht_axis, storage="weight", name="Counts"),
+            'njet_before_cuts'       : hist.Hist(njet_axis, storage="weight", name="Counts"),
+            'njet_after_cuts'        : hist.Hist(njet_axis, storage="weight", name="Counts"),
             
             
             
@@ -302,12 +387,17 @@ class TTbarResProcessor(processor.ProcessorABC):
             return self.process_analysis(events, 'nominal', nEvents)
         
         
+     #   if isData:
+     #       
+     #       return processor.accumulate([
+     #           self.process_analysis(events, 'nominal', nEvents),
+     #           self.process_analysis(events, 'hemVeto', nEvents)
+     #       ]) 
+        
+        
         FatJets = events.FatJet
         GenJets = events.GenJet
         Jets = events.Jet
-        run = events.run
-        lumi = events.luminosityBlock
-        evt = events.event
         Met = events.MET
         #print("dictionary of MET ", events.MET.fields)
         
@@ -371,7 +461,62 @@ class TTbarResProcessor(processor.ProcessorABC):
                 ({"Jet": corrected_jets.JER.down, "FatJet": corrected_fatjets.JER.down}, "jerDown"),
             ])
             
+            
         
+            
+#         if ('hem' in self.systematics) and ('2018' in self.iov):
+            
+#             if 'hemVeto' in self.systematics:
+                
+            
+#                 corrections.extend([
+#                     ({"Jet": corrected_jets, "FatJet": corrected_fatjets}, "hemVeto"),
+#                     ])
+
+            
+#             corrected_jets_hem    = HEMCleaning(corrected_jets)
+#             corrected_fatjets_hem = HEMCleaning(corrected_fatjets)
+
+#             corrections.extend([
+#             ({"Jet": corrected_jets_hem, "FatJet": corrected_fatjets_hem}, "hem"),
+#             ])
+            
+#             corrections.extend([
+#             ({"Jet": Jets, "FatJet": FatJets}, "hem"),
+#             ])
+
+                
+
+        
+        
+#         # get nominal output
+#         output_total = self.process_analysis(update(events, corrections[0][0]), 'nominal', nEvents)
+        
+# #         logger.debug('output:%s:nominal:%s:%s', time.time(), output_total['cutflow'], output_total['systematics'])
+# #         logger.debug('output:%s:nominal:%s', time.time(), output_total['weights'])
+        
+#         # loop through corrections
+#         outputs = {}
+#         for collections, name in corrections[1:]:
+#             process_output = self.process_analysis(update(events, collections), name, nEvents)
+#             outputs[name] = process_output
+            
+# #             logger.debug('output:%s:%s:%s', time.time(), name, process_output['weights'])
+
+
+#         # combine outputs
+#         for name, output_correction in outputs.items():
+#             for key in output_total.keys():
+
+#                 if 'hist' in str(type(output_total[key])):
+#                     if 'systematic' in list(output_total[key].axes.name):
+#                         output_total[key] += output_correction[key]
+
+#                 elif 'accumulator' in str(type(output_total[key])):
+#                     if key != 'cutflow':
+#                         output_total[key][name] = process_output[key][name]
+
+
         
         # loop through corrections
         outputs = []
@@ -458,9 +603,8 @@ class TTbarResProcessor(processor.ProcessorABC):
         SubJets = events.SubJet
         Jets    = events.Jet
         Met = events.MET
-        run = events.run
-        lumi = events.luminosityBlock
-        evt = events.event
+
+
        
         FatJets["p4"] = ak.with_name(FatJets[["pt", "eta", "phi", "mass"]],"PtEtaPhiMLorentzVector")
         SubJets["p4"] = ak.with_name(SubJets[["pt", "eta", "phi", "mass"]],"PtEtaPhiMLorentzVector")
@@ -506,8 +650,29 @@ class TTbarResProcessor(processor.ProcessorABC):
             
         
         # ---- event selection and object selection ---- #
-
-
+        
+        if isNominal:
+            output['FatJet_mass_before_cuts'].fill(
+                                       jetmass = FatJets[(ak.num(FatJets) >= 2) & (ak.any((FatJets.jetId > 1), axis=1))].mass[:,0],
+                                       weight = evtweights[(ak.num(FatJets) >= 2) & (ak.any((FatJets.jetId > 1), axis=1))],
+                                  )
+            output['FatJet_pt_before_cuts'].fill(
+                                       jetpt = FatJets[(ak.num(FatJets) >= 2) & (ak.any((FatJets.jetId > 1), axis=1))].pt[:,0],
+                                       weight = evtweights[(ak.num(FatJets) >= 2) & (ak.any((FatJets.jetId > 1), axis=1))],
+                                  )
+            output['FatJet_eta_before_cuts'].fill(
+                                       jeteta = FatJets[(ak.num(FatJets) >= 2) & (ak.any((FatJets.jetId > 1), axis=1))].eta[:,0],
+                                       weight = evtweights[(ak.num(FatJets) >= 2) & (ak.any((FatJets.jetId > 1), axis=1))],
+                                  ) 
+            output['ht_before_cuts'].fill(
+                                       ht = ak.sum(Jets[(Jets.pt>30) & (np.abs(Jets.eta)<3.0)].pt, axis=1),
+                                       weight = evtweights,
+                                  )
+            output['njet_before_cuts'].fill(
+                                       njet = ak.num(FatJets, axis=1),
+                                       weight = evtweights,
+                                  ) 
+        
         jetht = ak.sum(Jets[(Jets.pt>30) & (np.abs(Jets.eta)<3.0)].pt, axis=1)
         
 
@@ -520,6 +685,8 @@ class TTbarResProcessor(processor.ProcessorABC):
         
         # met filters #
         selection.add('metfilter', getMETFilter(self.iov, events))
+        # met cut # 
+        selection.add('metcut' , Met.pt < 60)
                 
         # jet id #
         selection.add('jetid', ak.any((FatJets.jetId > 1), axis=1))
@@ -544,7 +711,7 @@ class TTbarResProcessor(processor.ProcessorABC):
                   (ak.any((FatJets.jetId > 1), axis=1)) & \
                   (ak.any((FatJets.pt > self.ak8PtMin) & (np.abs(getRapidity(FatJets.p4)) < 2.4))) & \
                   ((ak.num(FatJets) > 1))
-        ''' 
+                
         # save cutflow
         if isNominal:
             cuts = []
@@ -552,15 +719,73 @@ class TTbarResProcessor(processor.ProcessorABC):
                 cuts.append(cut)
                 output['cutflow'][cut] += len(FatJets[selection.all(*cuts)])
             del cuts
-        '''    
+            
         jetpt_nocut = FatJets[selection.all('twoFatJets','jetid')].pt[:,0]
         jety_nocut = getRapidity(FatJets[selection.all('twoFatJets','jetid')].p4)[:,0]
         jeteta_nocut = FatJets[selection.all('twoFatJets','jetid')].eta[:,0]
         jetphi_nocut = FatJets[selection.all('twoFatJets','jetid')].eta[:,0]
         
+        ''' 
+        if isNominal:
+            output['jetpt_nocut'].fill(
+                                     jetpt = jetpt_nocut,
+                                      )
+            output['jeteta_nocut'].fill(
+                                     jeteta = jeteta_nocut,
+                                      )
+            output['jety_nocut'].fill(
+                                     jeteta = jety_nocut,
+                                      )
+            output['jetphi_nocut'].fill(
+                                     jetphi = jety_nocut,
+                                      )
+
+            
+       '''     
+       # before and after cut plots #
         
+        '''
+        if isNominal:
+                       
+            output['ht_before_cuts'].fill(
+                                       ht = jetht,
+                                       weight = np.ones_like(evtweights),
+                                  )
+            output['ht_after_cuts'].fill(
+                                       ht = jetht[selection.all('htCut')],
+                                       weight = np.ones_like(evtweights[selection.all('htCut')]),
+                                  )
 
+            output['FatJet_pt_before_cuts'].fill(
+                                       jetpt = FatJets[selection.all('htCut', 'twoFatJets','jetid')].pt[:,0],
+                                       weight = np.ones_like(evtweights[selection.all('htCut','twoFatJets','jetid')]),
+                                  )
+            output['FatJet_eta_before_cuts'].fill(
+                                       jeteta = FatJets[selection.all('htCut','twoFatJets','jetid')].eta[:,0],
+                                       weight = np.ones_like(evtweights[selection.all('htCut','twoFatJets','jetid')]),
+                                  )
 
+            output['FatJet_pt_after_cuts'].fill(
+                                       jetpt = FatJets[selection.all('htCut', 'twoFatJets','jetid', 'jetkincut')].pt[:,0],
+                                       weight = np.ones_like(evtweights[selection.all('htCut', 'twoFatJets','jetid', 'jetkincut')]),
+                                  )
+            output['FatJet_eta_after_cuts'].fill(
+                                       jeteta = FatJets[selection.all('htCut', 'twoFatJets','jetid', 'jetkincut')].eta[:,0],
+                                       weight = np.ones_like(evtweights[selection.all('htCut', 'twoFatJets','jetid', 'jetkincut')]),
+                                  )
+            output['njet_before_cuts'].fill(
+                                       njet = ak.num(FatJets, axis=1),
+                                       weight = np.ones_like(evtweights),
+                                  )
+            output['njet_after_cuts'].fill(
+                                       njet = ak.num(FatJets[selection.all('twoFatJets', 'jetid')], axis=1),
+                                       weight = np.ones_like(evtweights[selection.all('twoFatJets', 'jetid')]),
+                                  ) 
+
+         
+            
+            
+        '''
         eventCut = selection.all(*selection.names)
                             
         FatJets = FatJets[eventCut]
@@ -569,11 +794,35 @@ class TTbarResProcessor(processor.ProcessorABC):
         Met = Met[eventCut]
         evtweights = evtweights[eventCut]
         events = events[eventCut]
-        run = run[eventCut]
-        lumi = lumi[eventCut]
-        evt = evt[eventCut]
+        
         # if event cut results in few events
         if (len(events) < 10): return output
+        
+
+        if isNominal:
+            output['FatJet_mass_after_cuts'].fill(
+                                       jetmass = FatJets.mass[:,0],
+                                       weight = evtweights,
+                                  )
+            output['FatJet_pt_after_cuts'].fill(
+                                       jetpt = FatJets.pt[:,0],
+                                       weight = evtweights,
+                                  ) 
+            output['FatJet_eta_after_cuts'].fill(
+                                       jeteta = FatJets.eta[:,0],
+                                       weight = evtweights,
+                                  ) 
+            output['ht_after_cuts'].fill(
+                                       ht = ak.sum(Jets[(Jets.pt>30) & (np.abs(Jets.eta)<3.0)].pt, axis=1),
+                                       weight = evtweights,
+                                  )
+            output['njet_after_cuts'].fill(
+                                       njet = ak.num(FatJets, axis=1),
+                                       weight = evtweights,
+                                  )            
+        
+        
+        
 
         if not isData: GenJets = GenJets[eventCut]
             
@@ -584,74 +833,108 @@ class TTbarResProcessor(processor.ProcessorABC):
 
 
 
+        if self.useDeepAK8:
 
 
-        # sort jets by pt to select two leading jets
-        FatJet_pt_argsort = ak.argsort(FatJets.pt, ascending=False) 
-        SortedFatJets = FatJets[FatJet_pt_argsort]
+            # sort jets by pt to select two leading jets
+            FatJet_pt_argsort = ak.argsort(FatJets.pt, ascending=False) 
+            SortedFatJets = FatJets[FatJet_pt_argsort]
 
-        # higher deepak8 discriminator will be used for jet in mt of mt vs mtt distribution
-        jet0 = ak.where(SortedFatJets[:,0].deepTagMD_TvsQCD > SortedFatJets[:,1].deepTagMD_TvsQCD,
+            # higher deepak8 discriminator will be used for jet in mt of mt vs mtt distribution
+            jet0 = ak.where(SortedFatJets[:,0].deepTagMD_TvsQCD > SortedFatJets[:,1].deepTagMD_TvsQCD,
                             SortedFatJets[:,0],
                             SortedFatJets[:,1]
                                    )
             
-        jet1 = ak.where(SortedFatJets[:,0].deepTagMD_TvsQCD > SortedFatJets[:,1].deepTagMD_TvsQCD,
+            jet1 = ak.where(SortedFatJets[:,0].deepTagMD_TvsQCD > SortedFatJets[:,1].deepTagMD_TvsQCD,
                             SortedFatJets[:,1],
                             SortedFatJets[:,0]
                                    )
 
-        mcut_s0 = ((self.minMSD < jet0.msoftdrop) & (jet0.msoftdrop < self.maxMSD) )
-        mcut_s1 = ((self.minMSD < jet1.msoftdrop) & (jet1.msoftdrop < self.maxMSD) )
+            mcut_s0 = ((self.minMSD < jet0.msoftdrop) & (jet0.msoftdrop < self.maxMSD) )
+            mcut_s1 = ((self.minMSD < jet1.msoftdrop) & (jet1.msoftdrop < self.maxMSD) )
 
 
 
-        logger.debug('SortedFatJets:%s:FatJets.pt:%s:%s', time.time(), FatJets.pt, correction)
-        logger.debug('SortedFatJets:%s:SortedFatJets.pt:%s:%s', time.time(), SortedFatJets.pt, correction)
-        logger.debug('SortedFatJets:%s:SortedFatJets.deepTagMD_TvsQCD:%s:%s', time.time(), SortedFatJets.deepTagMD_TvsQCD, correction)
-        logger.debug('SortedFatJets:%s:jet0.pt:%s:%s', time.time(), jet0.pt, correction)
-        logger.debug('SortedFatJets:%s:jet1.pt:%s:%s', time.time(), jet1.pt, correction)
+            logger.debug('SortedFatJets:%s:FatJets.pt:%s:%s', time.time(), FatJets.pt, correction)
+            logger.debug('SortedFatJets:%s:SortedFatJets.pt:%s:%s', time.time(), SortedFatJets.pt, correction)
+            logger.debug('SortedFatJets:%s:SortedFatJets.deepTagMD_TvsQCD:%s:%s', time.time(), SortedFatJets.deepTagMD_TvsQCD, correction)
+            logger.debug('SortedFatJets:%s:jet0.pt:%s:%s', time.time(), jet0.pt, correction)
+            logger.debug('SortedFatJets:%s:jet1.pt:%s:%s', time.time(), jet1.pt, correction)
 
 
-        del FatJet_pt_argsort, SortedFatJets
+            del FatJet_pt_argsort, SortedFatJets
 
-        # signal = pass region for 2DAlphabet
-        # both jets pass deepak8 tagger
-        ttag_s0 = (jet0.deepTagMD_TvsQCD > self.deepAK8disc)
-        ttag_s1 = (jet1.deepTagMD_TvsQCD > self.deepAK8disc) & (mcut_s1)
-        ttag_s0_1 = (jet0.deepTagMD_TvsQCD > self.deepAK8disc)
-        ttag_s1_1 = (jet1.deepTagMD_TvsQCD > self.deepAK8disc) & (mcut_s1)
-            
-        # antitag = fail region for 2DAlphabet
-        # leading (in deepak8 disc) jet passes deepak8 tagger
-        # subleading (in deepak8 disc) jet fails deepak8 tagger         
-        antitag_disc = ((jet1.deepTagMD_TvsQCD < self.deepAK8disc) & (jet1.deepTagMD_TvsQCD > self.deepAK8low))
-        antitag = (antitag_disc) & (ttag_s0) & (mcut_s1)
-
+            # signal = pass region for 2DAlphabet
+            # both jets pass deepak8 tagger
+            ttag_s0 = (jet0.deepTagMD_TvsQCD > self.deepAK8disc)
+            ttag_s1 = (jet1.deepTagMD_TvsQCD > self.deepAK8disc) & (mcut_s1)
 
             
+            # antitag = fail region for 2DAlphabet
+            # leading (in deepak8 disc) jet passes deepak8 tagger
+            # subleading (in deepak8 disc) jet fails deepak8 tagger         
+            antitag_disc = ((jet1.deepTagMD_TvsQCD < self.deepAK8disc) & (jet1.deepTagMD_TvsQCD > self.deepAK8low))
+            antitag = (antitag_disc) & (ttag_s0) & (mcut_s1)
 
+
+            
+
+            
+        # ----------- CMS Top Tagger Version 2 (SD and Tau32 Cuts) ----------- #
+        else:
+            
+            # ---- ttbar candidates ---- #
+        
+            # index = [[0], [1], [0], ... [0], [1], [1]] type='{# events} * var * int64'
+            index = ak.unflatten( np.random.RandomState(2494497847).randint(2, size=len(FatJets)), np.ones(len(FatJets), dtype='i'))
+
+            leading_jet = FatJets[index]
+            subleading_jet = FatJets[1 - index]
+            ttbarcands = ak.cartesian([leading_jet, subleading_jet])
+            del index
+
+            jet0 = ttbarcands.slot0
+            jet1 = ttbarcands.slot1
+            
+        
+    
+            tau32_s0 = np.where(jet0.tau2>0,jet0.tau3/jet0.tau2, 0 )
+            tau32_s1 = np.where(jet1.tau2>0,jet1.tau3/jet1.tau2, 0 )
+
+            taucut_s0 = (tau32_s0 < self.tau32Cut)
+            taucut_s1 = (tau32_s1 < self.tau32Cut)
+
+            mcut_s0 = ((self.minMSD < jet0.msoftdrop) & (jet0.msoftdrop < self.maxMSD) )
+            mcut_s1 = ((self.minMSD < jet1.msoftdrop) & (jet1.msoftdrop < self.maxMSD) )
+
+            ttag_s0 = ((taucut_s0) & (mcut_s0))
+            ttag_s1 = ((taucut_s1) & (mcut_s1))
+            antitag = ((~taucut_s0) & (mcut_s0)) # The Probe jet will always be jet1 (at)
+
+
+        
                 
 
         
         # ---- Apply Delta Phi Cut for Back to Back Topology ---- #
         dPhiCut = (np.abs(jet0.p4.delta_phi(jet1.p4)) > 2.1)
 
+        if isNominal:
+            output['deltaPhi'].fill(deltaphi = np.abs(jet0.p4.delta_phi(jet1.p4)))
         
         
         # ttbar candidates have 2 subjets #
         hasSubjets0 = ((jet0.subJetIdx1 > -1) & (jet0.subJetIdx2 > -1))
         hasSubjets1 = ((jet1.subJetIdx1 > -1) & (jet1.subJetIdx2 > -1))
         GoodSubjets = ((hasSubjets0) & (hasSubjets1))
-        '''       
+        
         # apply ttbar event cuts #
         if isNominal:
             output['cutflow']['dPhiCut'] += len(FatJets[(dPhiCut)])
             output['cutflow']['Good Subjets'] += len(FatJets[(dPhiCut & GoodSubjets)])
-        ''' 
-        ttbarcandCuts = (dPhiCut & GoodSubjets)
 
-        #signal_region_cuts = (dPhiCut & GoodSubjets & ttag_s0 & ttag_s1 & mcut_s0 i)
+        ttbarcandCuts = (dPhiCut & GoodSubjets)
         antitag = antitag[ttbarcandCuts]
         ttag_s0 = ttag_s0[ttbarcandCuts]
         ttag_s1 = ttag_s1[ttbarcandCuts]
@@ -662,46 +945,35 @@ class TTbarResProcessor(processor.ProcessorABC):
         SubJets = SubJets[ttbarcandCuts]
         events = events[ttbarcandCuts]
         evtweights = evtweights[ttbarcandCuts]
-        run = run[ttbarcandCuts & ttag_s0_1 & ttag_s1_1]
-        #run_cen = run[ttbarcandCuts  & ttag_s0 & ttag_s1 & mcut_s0]
-        lumi = lumi[ttbarcandCuts  &  ttag_s0_1 & ttag_s1_1]
-        #evt_cen = evt[ttbarcandCuts & ttag_s0 & ttag_s1 & mcut_s0 & np.abs(rapidity) < 1.0]
-        evt = evt[ttbarcandCuts & ttag_s0_1 & ttag_s1_1]
-        #evt_fwd = evt[ttbarcandCuts & ttag_s0 & ttag_s1 & mcut_s0 & np.abs(rapidity) > 1.0]
-
-        df = pd.DataFrame({
-        # ... your existing columns ...
-         "run": run,
-         "event": evt,
-         "lumi": lumi,
-        })
-       
-        df["event_id"] = df["run"].astype(str) + ":" + df["event"].astype(str) + ":" + df["lumi"].astype(str)
-        import sys
-
-        lines = df["event_id"].astype(str).tolist()
-        with open("selected_events.txt", "w") as f:   # choose your filename here
-            #sys.stdout.write("\n".join(lines) + "\n")
-            f.write("\n".join(lines) + "\n")
-
-
-
+        
         if not isData: GenJets = GenJets[ttbarcandCuts]
         del dPhiCut, ttbarcandCuts, hasSubjets0, hasSubjets1, GoodSubjets
                               
         logger.debug('memory:%s: apply event cuts %s:%s', time.time(), correction, get_memory_usage())
 
         
-        ttbarmass = (jet0.p4 + jet1.p4).mass 
         # ttbarmass
-        print ("ttbarmass" , ttbarmass) 
+        ttbarmass = (jet0.p4 + jet1.p4).mass
+        
         # subjets
         SubJet00 = ak.flatten(SubJets[ak.unflatten(jet0.subJetIdx1, np.ones(len(FatJets), dtype='i'))])
         SubJet01 = ak.flatten(SubJets[ak.unflatten(jet0.subJetIdx2, np.ones(len(FatJets), dtype='i'))])
         SubJet10 = ak.flatten(SubJets[ak.unflatten(jet1.subJetIdx1, np.ones(len(FatJets), dtype='i'))])
         SubJet11 = ak.flatten(SubJets[ak.unflatten(jet1.subJetIdx2, np.ones(len(FatJets), dtype='i'))])
 
+        # print('\n----subjets----')
 
+        # print('SubJet00.pt', SubJet00.pt, events.event[0], correction)
+        # print('SubJet01.pt', SubJet01.pt, events.event[0], correction)
+        # print('SubJet10.pt', SubJet10.pt, events.event[0], correction)
+        # print('SubJet11.pt', SubJet11.pt, events.event[0], correction)
+        # print('SubJet00.btagDeepB', SubJet00.btagDeepB, events.event[0], correction)
+        # print('SubJet01.btagDeepB', SubJet01.btagDeepB, events.event[0], correction)
+        # print('SubJet10.btagDeepB', SubJet10.btagDeepB, events.event[0], correction)
+        # print('SubJet11.btagDeepB', SubJet11.btagDeepB, events.event[0], correction)
+        
+        # print('----subjets----\n')
+    
         
         
 
@@ -729,8 +1001,27 @@ class TTbarResProcessor(processor.ProcessorABC):
         ttagI =   (ttag_s0 | ttag_s1)          # At least one top tagged ('I' for 'inclusive' tagger; >=1t; 1t+2t)
         ttag2 =   (ttag_s0 & ttag_s1)          # Both jets top tagged (2t)
         Alltags = (ttag0 | ttagI)              # Either no tag or at least one tag (0t+1t+2t)
+                         
         
+        
+        # b tagger #
+        
+        
+        if self.useDeepCSV:
+            
+            btag_s0 = ( np.maximum(SubJet00.btagDeepB , SubJet01.btagDeepB) > self.bdisc )
+            btag_s1 = ( np.maximum(SubJet10.btagDeepB , SubJet11.btagDeepB) > self.bdisc )
 
+        else:
+            btag_s0 =  ( np.maximum(SubJet00.btagCSVV2 , SubJet01.btagCSVV2) > 0.8484 )
+            btag_s1 =  ( np.maximum(SubJet10.btagCSVV2 , SubJet11.btagCSVV2) > 0.8484 )
+
+
+        # --- Define "B Tag" Regions ---- #
+        btag0 = ((~btag_s0) & (~btag_s1)) #(0b)
+        btag1 = (btag_s0 ^ btag_s1) #(1b)
+        btag2 = (btag_s0 & btag_s1) #(2b)
+        
         # rapidity #
         rapidity = getRapidity(jet0.p4) - getRapidity(jet1.p4)
         cen = (np.abs(rapidity) < 1.0)
@@ -743,14 +1034,22 @@ class TTbarResProcessor(processor.ProcessorABC):
     
         # rapidity, btag and top tag categories
         regs = {'cen': cen, 'fwd': fwd}
+        #btags = {'0b': btag0, '1b':btag1, '2b':btag2}
         ttags = {
             "at":antitag, # 2Dalphabet fail region
             "2t":ttag2, # 2Dalphabet pass region
+            # "AT&Pt": antitag_probe, 
+            #  "pret":pretag, 
+            #  "0t":ttag0, 
+            #  "1t":ttag1, 
+            #  ">=1t":ttagI, 
+            #  ">=0t":Alltags
                 }
         
         
         
         # get all analysis category masks
+        #categories = { t[0]+b[0]+y[0] : (t[1]&b[1]&y[1])  for t,b,y in itertools.product( ttags.items(), 
         categories = { t[0]+y[0] : (t[1]&y[1])  for t,y in itertools.product( ttags.items(), 
                                                                         regs.items())
             }
@@ -772,6 +1071,73 @@ class TTbarResProcessor(processor.ProcessorABC):
         
         self.weights[correction].add('genWeight', evtweights)
                         
+        # if running background estimation
+        if (self.bkgEst) and isNominal and (self.bkgEst == 'mistag'): 
+
+
+                        
+            jetmass = jet1.p4.mass
+            jetp = jet1.p4.p
+            jetmsd = jet0.msoftdrop
+                
+       
+
+            # for mistag rate weights
+            mistag_rate_df = pd.read_csv(f'data/corrections/backgroundEstimate/mistag_rate_{self.iov}.csv')
+            pbins = mistag_rate_df['jetp bins'].values
+            mistag_weights = np.ones(len(FatJets), dtype=float)
+
+
+            # for mass modification
+
+#             qcdfile = util.load(f'data/corrections/backgroundEstimate/QCD_{self.iov}.coffea')
+            qcd_jetmass_dict = json.load(open(f'data/corrections/backgroundEstimate/QCD_jetmass_{self.iov}.json'))
+            qcd_jetmass_bins = qcd_jetmass_dict['bins']
+
+
+            # for transfer function
+
+            bins_mt  = np.arange(0,500,10)
+            bins_mtt = np.arange(800,8000,360)
+
+
+            for ilabel,icat in labels_and_categories.items():
+
+                icat = ak.flatten(icat)
+                
+                if 'pret' in ilabel:
+
+                    # get antitag region and signal region labels
+                    # ilabel[-5:] = bcat + ycat (0bcen for example)
+                    label_at = 'at'+ilabel[-5:]
+                    label_2t = '2t'+ilabel[-5:]
+
+
+                    # get mistag rate for antitag region
+                    mistag_rate = mistag_rate_df[label_at].values
+
+                    # get p bin for probe jet p
+                    mistag_pbin = np.digitize(ak.flatten(jetp[icat]), pbins) - 1
+
+                    # store mistag weights for events in this category
+                    mistag_weights[icat] = mistag_rate[mistag_pbin]
+
+
+
+                    # qcd mass modification #
+
+                    # get distribution of jet mass in QCD signal ('2t') region
+                    qcd_jetmass_counts = qcd_jetmass_dict[label_2t]
+
+                    # randomly select jet mass from distribution
+                    ModMass_hist_dist = ss.rv_histogram([qcd_jetmass_counts[:-1], qcd_jetmass_bins])
+                    jet1.p4[icat]["fMass"] = ModMass_hist_dist.rvs(size=len(jet1.p4[icat]))
+
+
+            self.weights[correction].add('mistag', mistag_weights)
+            del jetmass, jetp, jetmsd
+
+
         
         # kinematics variables for plotting
         jetpt = jet0.p4.pt
@@ -901,6 +1267,15 @@ class TTbarResProcessor(processor.ProcessorABC):
                 ttagSFDown = np.ones(len(events))
 
     
+                # # apply pass ttag SF to events
+                # ttagSFNom = np.where(ttag2, nomsf[jet0_ptbins]*nomsf[jet1_ptbins],ttagSFNom)
+                # ttagSFUp = np.where(ttag2, upsf[jet0_ptbins]*upsf[jet1_ptbins],ttagSFUp)
+                # ttagSFDown = np.where(ttag2, downsf[jet0_ptbins]*downsf[jet1_ptbins],ttagSFDown)
+
+                # # apply fail ttag SF to events
+                # ttagSFNom = np.where(antitag, nomsf[jet0_ptbins]*nomsf_fail[jet1_ptbins],ttagSFNom)
+                # ttagSFUp = np.where(antitag, upsf[jet0_ptbins]*upsf_fail[jet1_ptbins],ttagSFUp)
+                # ttagSFDown = np.where(antitag, downsf[jet0_ptbins]*downsf_fail[jet1_ptbins],ttagSFDown)
 
 
                 ttagSFNom_1 = np.where(jet0_ptbins==1, nomsf[1], 1.0) * np.where((jet1_ptbins==1 & ttag2), nomsf[1], 1.0) * np.where((jet1_ptbins==1 & antitag), nomsf_fail[1], 1.0)
@@ -937,6 +1312,54 @@ class TTbarResProcessor(processor.ProcessorABC):
                            )
             
              
+            if 'btag' in self.systematics:
+                
+                btag_wgts_nom = np.ones(len(events))
+                btag_wgts_up  = np.ones(len(events))
+                btag_wgts_down = np.ones(len(events))
+                
+                btag_wgts_nom_bcats = btagCorrections([btag0, btag1, btag2], 
+                                                      [SubJet00, SubJet01, SubJet10, SubJet11], 
+                                                      isData, 
+                                                      self.bdisc,
+                                                      sysType='central')
+                
+                btag_wgts_up_bcats = btagCorrections([btag0, btag1, btag2], 
+                                                      [SubJet00, SubJet01, SubJet10, SubJet11], 
+                                                      isData, 
+                                                      self.bdisc,
+                                                      sysType='up')
+                
+                btag_wgts_down_bcats = btagCorrections([btag0, btag1, btag2], 
+                                                      [SubJet00, SubJet01, SubJet10, SubJet11], 
+                                                      isData, 
+                                                      self.bdisc,
+                                                      sysType='down')
+                
+                
+                btag_wgts_nom[ak.flatten(btag0)]  = btag_wgts_nom_bcats['0b'][ak.flatten(btag0)]
+                btag_wgts_up[ak.flatten(btag0)]   = btag_wgts_up_bcats['0b'][ak.flatten(btag0)]
+                btag_wgts_down[ak.flatten(btag0)] = btag_wgts_down_bcats['0b'][ak.flatten(btag0)]
+                btag_wgts_nom[ak.flatten(btag1)]  = btag_wgts_nom_bcats['1b'][ak.flatten(btag1)]
+                btag_wgts_up[ak.flatten(btag1)]   = btag_wgts_up_bcats['1b'][ak.flatten(btag1)]
+                btag_wgts_down[ak.flatten(btag1)] = btag_wgts_down_bcats['1b'][ak.flatten(btag1)]
+                btag_wgts_nom[ak.flatten(btag2)]  = btag_wgts_nom_bcats['2b'][ak.flatten(btag2)]
+                btag_wgts_up[ak.flatten(btag2)]   = btag_wgts_up_bcats['2b'][ak.flatten(btag2)]
+                btag_wgts_down[ak.flatten(btag2)] = btag_wgts_down_bcats['2b'][ak.flatten(btag2)]
+                
+                self.weights[correction].add("btag", 
+                    weight=btag_wgts_nom, 
+                    weightUp=btag_wgts_up, 
+                    weightDown=btag_wgts_down,
+                           )
+                
+                del btag_wgts_nom, btag_wgts_up, btag_wgts_down
+                del btag_wgts_nom_bcats, btag_wgts_up_bcats, btag_wgts_down_bcats
+                
+                
+                
+                logger.debug('memory:%s: btag systematics %s:%s', time.time(), correction, get_memory_usage())
+
                             
                             
         logger.debug('JEC:%s:histogram JES:%s:%s', time.time(), FatJets.pt, correction)
@@ -948,15 +1371,8 @@ class TTbarResProcessor(processor.ProcessorABC):
             
             if isNominal:
                 output['cutflow'][ilabel] += len(events.event[icat])
-               
-
-            output['jetdy'].fill(
-                                  systematic=correction,
-                                  anacat = i,
-                                  jetdy = rapidity[icat],
-                                  weight = self.weights[correction].weight()[icat],
-                                  )   
-            ''' 
+                                                           
+            
             output['jetmass'].fill(
                                    systematic=correction,
                                    anacat = i,
@@ -969,6 +1385,50 @@ class TTbarResProcessor(processor.ProcessorABC):
                                    jetmass = jetmsd[icat],
                                    weight = self.weights[correction].weight()[icat],
                                   )
+            ''' 
+            output['jetpt'].fill(
+                                 systematic=correction,
+                                 anacat = i,
+                                 jetpt = jetpt[icat],
+                                 weight = self.weights[correction].weight()[icat],
+                                  )
+            
+            output['ht'].fill(
+                                 systematic=correction,
+                                 anacat = i,
+                                 ht = jetht[icat],
+                                 weight = self.weights[correction].weight()[icat],
+                                  )
+            
+            output['jeteta'].fill(
+                                  systematic=correction,
+                                  anacat = i,
+                                  jeteta = jeteta[icat],
+                                  weight = self.weights[correction].weight()[icat],
+                                  )
+
+            output['jety'].fill(
+                                  systematic=correction,
+                                  anacat = i,
+                                  jety = jety[icat],
+                                  weight = self.weights[correction].weight()[icat],
+                                  )
+
+
+            output['jetdy'].fill(
+                                  systematic=correction,
+                                  anacat = i,
+                                  jetdy = rapidity[icat],
+                                  weight = self.weights[correction].weight()[icat],
+                                  )
+            
+            output['jetphi'].fill(
+                                  systematic=correction,
+                                  anacat = i,
+                                  jetphi = jetphi[icat],
+                                  weight = self.weights[correction].weight()[icat],
+                                  )
+            '''
             output['jetmass1'].fill(
                                    systematic=correction,
                                    anacat = i,
@@ -982,8 +1442,40 @@ class TTbarResProcessor(processor.ProcessorABC):
                                    weight = self.weights[correction].weight()[icat],
                                   )
 
+            '''
+            
+            output['jetpt1'].fill(
+                                 systematic=correction,
+                                 anacat = i,
+                                 jetpt = jetpt1[icat],
+                                 weight = self.weights[correction].weight()[icat],
+                                  )
             
             
+            output['jeteta1'].fill(
+                                  systematic=correction,
+                                  anacat = i,
+                                  jeteta = jeteta1[icat],
+                                  weight = self.weights[correction].weight()[icat],
+                                  )
+
+            output['jety1'].fill(
+                                  systematic=correction,
+                                  anacat = i,
+                                  jety = jety1[icat],
+                                  weight = self.weights[correction].weight()[icat],
+                                  )
+
+
+            
+            output['jetphi1'].fill(
+                                  systematic=correction,
+                                  anacat = i,
+                                  jetphi = jetphi1[icat],
+                                  weight = self.weights[correction].weight()[icat],
+                                  )
+            
+            '''
             output['mtt_vs_mt'].fill(
                                      systematic=correction,
                                      anacat = i,
@@ -992,6 +1484,13 @@ class TTbarResProcessor(processor.ProcessorABC):
                                      weight = self.weights[correction].weight()[icat],
                                     )
 
+            # output['mtt_vs_mt_vs_tdisc'].fill(systematic=correction,
+            #                              anacat = i,
+            #                              ttbarmass = ttbarmass[icat],
+            #                              jetmass = jetmsd[icat],
+            #                              tdisc = tdisc_s1[icat],
+            #                              weight = self.weights[correction].weight()[icat],
+            #                             )
             
             output['ttbarmass'].fill(systematic=correction,
                                          anacat = i,
@@ -1009,26 +1508,47 @@ class TTbarResProcessor(processor.ProcessorABC):
             
             
             
-            '''
+            
             # save weights
             
             output['weights'][correction] += np.sum(self.weights[correction].weight())
             output['systematics'][correction] += len(events.event[icat])
 
-            if isNominal:  
+
+                
+            if isNominal:    
+                
+#                 output['discriminators'].fill(anacat = i,
+#                                           jetp = jetp[icat],
+#                                           bdisc = bdisc_s1[icat],
+#                                           tdisc = tdisc_s1[icat],
+#                                           nsub = tau32_s1[icat],
+#                                           weight = weights[correction].weight()[icat],
+#                                          )
+
+                # output['mt_pt_tdisc_jet0'].fill(systematic=syst,
+                #                                 anacat = i,
+                #                                 jetpt = jet0.pt,
+                #                                 jetmass = jet0.msoftdrop,
+                #                                 tdisc = jet0.deepTagMD_TvsQCD,
+                #                                 weight = weights[correction].weight()[icat],
+                #                       )
+
+                # output['mt_pt_tdisc_jet1'].fill(systematic=syst,
+                #                                 anacat = i,
+                #                                 jetpt = jet1.pt,
+                #                                 jetmass = jet1.msoftdrop,
+                #                                 tdisc = jet1.deepTagMD_TvsQCD,
+                #                                 weight = weights[correction].weight()[icat],
+                #                       )
+
 
                 for syst in self.weights[correction].variations:
                     
                     
                     output['weights'][syst] += np.sum(self.weights[correction].weight(syst))
                     output['systematics'][syst] += len(events.event[icat])
-                    output['jetdy'].fill(
-                                  systematic=syst,
-                                  anacat = i,
-                                  jetdy = rapidity[icat],
-                                  weight = self.weights[correction].weight(syst)[icat],
-                                  )                    
-                    '''
+                    
                     output['jetmass'].fill(
                                    systematic=syst,
                                    anacat = i,
@@ -1041,6 +1561,49 @@ class TTbarResProcessor(processor.ProcessorABC):
                                            jetmass = jetmsd[icat],
                                            weight = self.weights[correction].weight(syst)[icat],
                                           )
+                    ''' 
+                    output['jetpt'].fill(
+                                         systematic=syst,
+                                         anacat = i,
+                                         jetpt = jetpt[icat],
+                                         weight = self.weights[correction].weight(syst)[icat],
+                                          )
+
+                    output['jeteta'].fill(
+                                          systematic=syst,
+                                          anacat = i,
+                                          jeteta = jeteta[icat],
+                                          weight = self.weights[correction].weight(syst)[icat],
+                                          )
+
+                    output['ht'].fill(
+                                 systematic=syst,
+                                 anacat = i,
+                                 ht = jetht[icat],
+                                 weight = self.weights[correction].weight(syst)[icat],
+                                  )
+
+                    output['jety'].fill(
+                                  systematic=syst,
+                                  anacat = i,
+                                  jety = jety[icat],
+                                  weight = self.weights[correction].weight(syst)[icat],
+                                  )
+
+                    output['jetdy'].fill(
+                                  systematic=syst,
+                                  anacat = i,
+                                  jetdy = rapidity[icat],
+                                  weight = self.weights[correction].weight(syst)[icat],
+                                  )
+                    
+                    output['jetphi'].fill(
+                                          systematic=syst,
+                                          anacat = i,
+                                          jetphi = jetphi[icat],
+                                          weight = self.weights[correction].weight(syst)[icat],
+                                          )
+                    '''
                     output['jetmass1'].fill(
                                    systematic=syst,
                                    anacat = i,
@@ -1054,6 +1617,38 @@ class TTbarResProcessor(processor.ProcessorABC):
                                            weight = self.weights[correction].weight(syst)[icat],
                                           )
                     
+                    '''
+                    output['jetpt1'].fill(
+                                         systematic=syst,
+                                         anacat = i,
+                                         jetpt = jetpt1[icat],
+                                         weight = self.weights[correction].weight(syst)[icat],
+                                          )
+                    
+                    
+                    output['jeteta1'].fill(
+                                          systematic=syst,
+                                          anacat = i,
+                                          jeteta = jeteta1[icat],
+                                          weight = self.weights[correction].weight(syst)[icat],
+                                          )
+        
+                    output['jety1'].fill(
+                                          systematic=syst,
+                                          anacat = i,
+                                          jety = jety1[icat],
+                                          weight = self.weights[correction].weight(syst)[icat],
+                                          )
+        
+        
+                    
+                    output['jetphi1'].fill(
+                                          systematic=syst,
+                                          anacat = i,
+                                          jetphi = jetphi1[icat],
+                                          weight = self.weights[correction].weight(syst)[icat],
+                                          )
+                    '''
 
                     output['ttbarmass'].fill(systematic=syst,
                                          anacat = i,
@@ -1073,10 +1668,33 @@ class TTbarResProcessor(processor.ProcessorABC):
                                          weight = self.weights[correction].weight(syst)[icat],
                                         )
 
+                    # output['mt_pt_tdisc_jet0'].fill(systematic=syst,
+                    #                                 anacat = i,
+                    #                                 jetpt = jet0.pt,
+                    #                                 jetmass = jet0.msoftdrop,
+                    #                                 tdisc = jet0.deepTagMD_TvsQCD,
+                    #                                 weight = weights[correction].weight(syst)[icat],
+                    #                   )
+
+                    # output['mt_pt_tdisc_jet1'].fill(systematic=syst,
+                    #                                 anacat = i,
+                    #                                 jetpt = jet1.pt,
+                    #                                 jetmass = jet1.msoftdrop,
+                    #                                 tdisc = jet1.deepTagMD_TvsQCD,
+                    #                                 weight = weights[correction].weight(syst)[icat],
+                    #                   )
+                    
+                    # output['mtt_vs_mt_vs_tdisc'].fill(systematic=syst,
+                    #                      anacat = i,
+                    #                      ttbarmass = ttbarmass[icat],
+                    #                      jetmass = jetmsd[icat],
+                    #                      tdisc = tdisc_s0[icat],
+                    #                      weight = self.weights[correction].weight(syst)[icat],
+                    #                     )
 
 
 
-                    '''
+                    
                     
                     
         logger.debug('memory:%s: fill histograms %s:%s', time.time(), correction, get_memory_usage())

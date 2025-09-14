@@ -35,7 +35,7 @@ if __name__ == "__main__":
 
     # directory where output files are saved
     #savedir = f'outputs/ttagSF/' 
-    savedir = f'outputs/ttbar16/' 
+    savedir = f'outputs/dy/' 
     
     parser = argparse.ArgumentParser(
                     prog='ttbaranalysis.py',
@@ -367,7 +367,8 @@ if __name__ == "__main__":
                                 "skipbadfiles": skipbadfiles,
                                 "savemetrics": True,
                                 "schema": NanoAODSchema,
-                                "workers":4
+                                "workers":4,
+                                "xrootdtimeout": 500
                                 },
                         chunksize=chunksize_futures,
                         maxchunks=maxchunks,
