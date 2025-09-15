@@ -230,7 +230,7 @@ class TTbarResProcessor(processor.ProcessorABC):
         njet_axis        = hist.axis.Regular(10,1,11, name="njet", label=r"$N_{FatJet}$")
         jetdy_axis      = hist.axis.Regular(50, -3, 3, name="jetdy", label=r"$\Delta y$")
         
-        # output
+        #output
         self.histo_dict = {
 
             
@@ -258,6 +258,12 @@ class TTbarResProcessor(processor.ProcessorABC):
             'cutflow': processor.defaultdict_accumulator(int),
             'weights': processor.defaultdict_accumulator(float),
             'systematics': processor.defaultdict_accumulator(float),
+
+            "event_list": processor.dict_accumulator({ 
+                "run":   processor.list_accumulator([]),
+                "lumi":  processor.list_accumulator([]),
+                "event": processor.list_accumulator([]),
+                }),
         }
         
       
@@ -458,9 +464,9 @@ class TTbarResProcessor(processor.ProcessorABC):
         SubJets = events.SubJet
         Jets    = events.Jet
         Met = events.MET
-        run = events.run
-        lumi = events.luminosityBlock
-        evt = events.event
+        run = events.run.to_numpy()
+        lumi = events.luminosityBlock.to_numpy()
+        evt = events.event.to_numpy()
        
         FatJets["p4"] = ak.with_name(FatJets[["pt", "eta", "phi", "mass"]],"PtEtaPhiMLorentzVector")
         SubJets["p4"] = ak.with_name(SubJets[["pt", "eta", "phi", "mass"]],"PtEtaPhiMLorentzVector")
@@ -662,13 +668,17 @@ class TTbarResProcessor(processor.ProcessorABC):
         SubJets = SubJets[ttbarcandCuts]
         events = events[ttbarcandCuts]
         evtweights = evtweights[ttbarcandCuts]
+        print ("length of run before 3 final cuts is ", len(run))
         run = run[ttbarcandCuts & ttag_s0_1 & ttag_s1_1]
-        #run_cen = run[ttbarcandCuts  & ttag_s0 & ttag_s1 & mcut_s0]
         lumi = lumi[ttbarcandCuts  &  ttag_s0_1 & ttag_s1_1]
-        #evt_cen = evt[ttbarcandCuts & ttag_s0 & ttag_s1 & mcut_s0 & np.abs(rapidity) < 1.0]
         evt = evt[ttbarcandCuts & ttag_s0_1 & ttag_s1_1]
-        #evt_fwd = evt[ttbarcandCuts & ttag_s0 & ttag_s1 & mcut_s0 & np.abs(rapidity) > 1.0]
-
+        print ("length of run AFTER 3 final cuts is ", len(run))
+        
+        output["event_list"]["run"]   += list(run)
+        output["event_list"]["lumi"]   += list(lumi)
+        output["event_list"]["event"]   += list(evt)
+        print("length of the accumulator" , len(output["event_list"]["run"]))
+        ''' 
         df = pd.DataFrame({
         # ... your existing columns ...
          "run": run,
@@ -680,10 +690,11 @@ class TTbarResProcessor(processor.ProcessorABC):
         import sys
 
         lines = df["event_id"].astype(str).tolist()
+        #with open("/uscms_data/d3/haifasf/TTbarHadronicSkimmer/selected_events.txt", "w") as f:   # choose your filename here
         with open("selected_events.txt", "w") as f:   # choose your filename here
             #sys.stdout.write("\n".join(lines) + "\n")
             f.write("\n".join(lines) + "\n")
-
+        '''
 
 
         if not isData: GenJets = GenJets[ttbarcandCuts]
@@ -694,7 +705,7 @@ class TTbarResProcessor(processor.ProcessorABC):
         
         ttbarmass = (jet0.p4 + jet1.p4).mass 
         # ttbarmass
-        print ("ttbarmass" , ttbarmass) 
+        #print ("ttbarmass" , ttbarmass) 
         # subjets
         SubJet00 = ak.flatten(SubJets[ak.unflatten(jet0.subJetIdx1, np.ones(len(FatJets), dtype='i'))])
         SubJet01 = ak.flatten(SubJets[ak.unflatten(jet0.subJetIdx2, np.ones(len(FatJets), dtype='i'))])
@@ -949,14 +960,14 @@ class TTbarResProcessor(processor.ProcessorABC):
             if isNominal:
                 output['cutflow'][ilabel] += len(events.event[icat])
                
-
+            '''
             output['jetdy'].fill(
                                   systematic=correction,
                                   anacat = i,
                                   jetdy = rapidity[icat],
                                   weight = self.weights[correction].weight()[icat],
                                   )   
-            ''' 
+            
             output['jetmass'].fill(
                                    systematic=correction,
                                    anacat = i,
@@ -1019,7 +1030,7 @@ class TTbarResProcessor(processor.ProcessorABC):
 
                 for syst in self.weights[correction].variations:
                     
-                    
+                    '''
                     output['weights'][syst] += np.sum(self.weights[correction].weight(syst))
                     output['systematics'][syst] += len(events.event[icat])
                     output['jetdy'].fill(
@@ -1028,7 +1039,7 @@ class TTbarResProcessor(processor.ProcessorABC):
                                   jetdy = rapidity[icat],
                                   weight = self.weights[correction].weight(syst)[icat],
                                   )                    
-                    '''
+                    
                     output['jetmass'].fill(
                                    systematic=syst,
                                    anacat = i,
