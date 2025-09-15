@@ -668,16 +668,21 @@ class TTbarResProcessor(processor.ProcessorABC):
         SubJets = SubJets[ttbarcandCuts]
         events = events[ttbarcandCuts]
         evtweights = evtweights[ttbarcandCuts]
-        print ("length of run before 3 final cuts is ", len(run))
         run = run[ttbarcandCuts & ttag_s0_1 & ttag_s1_1]
         lumi = lumi[ttbarcandCuts  &  ttag_s0_1 & ttag_s1_1]
         evt = evt[ttbarcandCuts & ttag_s0_1 & ttag_s1_1]
-        print ("length of run AFTER 3 final cuts is ", len(run))
-        
-        output["event_list"]["run"]   += list(run)
-        output["event_list"]["lumi"]   += list(lumi)
-        output["event_list"]["event"]   += list(evt)
-        print("length of the accumulator" , len(output["event_list"]["run"]))
+
+        if isNominal:
+          before = len(output["event_list"]["run"])
+ 
+          output["event_list"]["run"]   += list(run)
+          output["event_list"]["lumi"]   += list(lumi)
+          output["event_list"]["event"]   += list(evt)
+          after = len(output["event_list"]["run"])
+          print(after - before,  len(run), "   if different then is wrong")
+          df = pd.DataFrame(output["event_list"])
+          print("rows:", len(df))
+          print("duplicates:", df.duplicated(["run","lumi","event"]).sum())
         ''' 
         df = pd.DataFrame({
         # ... your existing columns ...
