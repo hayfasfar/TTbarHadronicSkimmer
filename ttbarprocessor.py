@@ -128,29 +128,6 @@ class TTbarResProcessor(processor.ProcessorABC):
         self.systematics = systematics
         self.blinding = blinding
         #self.rpf_params = rpf_params        
-        
-#         self.transfer_function = np.load('plots/save.npy')
-
-#         deepak8cuts = {
-#             'loose':{ # 1%
-#                 '2016APV': 0.486, 
-#                 '2016': 0.475,
-#                 '2017': 0.487,
-#                 '2018': 0.477,
-#             },
-#             'medium':{ # 0.5%
-#                 '2016APV': 0.677, 
-#                 '2016': 0.666,
-#                 '2017': 0.673,
-#                 '2018': 0.669,
-#             },
-#             'tight': { # 0.1%
-#                 '2016APV': 0.902, 
-#                 '2016': 0.897,
-#                 '2017': 0.898,
-#                 '2018': 0.900,
-#             } 
-#         }
     
         # from https://twiki.cern.ch/twiki/bin/view/CMS/DeepAK8Tagging2018WPsSFs#2016_Data
         deepak8cuts = {
@@ -183,11 +160,9 @@ class TTbarResProcessor(processor.ProcessorABC):
         self.deepAK8disc = deepak8cuts[deepAK8Cut][self.iov]
         
         if deepAK8Cut == 'tight':
-#             self.deepAK8low = deepak8cuts['loose'][self.iov]
             self.deepAK8low = deepak8cuts['medium'][self.iov]
         elif deepAK8Cut == 'medium':
              self.deepAK8low = deepak8cuts['loose'][self.iov]
-#            self.deepAK8low = deepak8cuts['medium'][self.iov]
         else:
             self.deepAK8low = 0.2
         
@@ -445,9 +420,9 @@ class TTbarResProcessor(processor.ProcessorABC):
         triggernames = { 
 
         "2016APV": ["PFHT900", "AK8PFJet450"],
-        "2016" : ["PFHT900", "AK8PFJet450"],
-        "2017" : ["PFHT1050", "AK8PFJet500"],
-        "2018" : ["PFHT1050", "AK8PFJet500"],
+        "2016" :   ["PFHT900", "AK8PFJet450"],
+        "2017" :   ["PFHT1050", "AK8PFJet500"],
+        "2018" :   ["PFHT1050", "AK8PFJet500"],
 
         }
 
@@ -495,11 +470,8 @@ class TTbarResProcessor(processor.ProcessorABC):
         else:
             if "LHEWeight_originalXWGTUP" not in events.fields: 
                 evtweights = events.genWeight
-#                 print('genWeight', evtweights) 
             else: 
                 evtweights = events.LHEWeight_originalXWGTUP
-#                 print('LHEWeight_originalXWGTUP', evtweights) 
-#                 print('events.genWeight', events.genWeight) 
 
 
         if isNominal:
