@@ -16,7 +16,7 @@ from dask.distributed import Client, performance_report
 import warnings
 warnings.filterwarnings("ignore")
 
-default_datastets = ['JetHT', 'TTbar', 'QCD']
+default_datastets = ['data', 'TTbar', 'QCD']
 default_signals = ['RSGluon', 'ZPrime10', 'ZPrime30', 'ZPrimeDM', 'ZPrime1']
 
 from ttbarprocessor import TTbarResProcessor
@@ -44,12 +44,12 @@ if __name__ == "__main__":
     
     # datasets to run
     parser.add_argument('-d', '--dataset',
-                        choices=['JetHT', 'QCD', 'TTbar', 'ZPrime1', 'ZPrime10', 'ZPrime30', 'ZPrimeDM', 'RSGluon'], 
+                        choices=['data', 'QCD', 'TTbar', 'ZPrime1', 'ZPrime10', 'ZPrime30', 'ZPrimeDM', 'RSGluon'], 
                         default=default_datastets,
                         action='append'
                        )
     
-    parser.add_argument('--iov', choices=['2016APV', '2016', '2017', '2018'], default='2016')
+    parser.add_argument('--iov', choices=['2022', '2023', '2024'], default='2016')
     parser.add_argument('--signals', action='store_true', help='run only signal samples')
     
     
@@ -199,7 +199,7 @@ if __name__ == "__main__":
     
  
     jsonfiles = {
-        "JetHT": 'data/nanoAOD/JetHT.json',
+        "data": 'data/nanoAOD/data.json',
         "QCD": 'data/nanoAOD/QCD.json',
         "TTbar": 'data/nanoAOD/TTbar.json',
         "ZPrime1": 'data/nanoAOD/ZPrime1.json',
