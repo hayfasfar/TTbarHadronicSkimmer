@@ -303,17 +303,18 @@ def GetPUSF(events, IOV):
     return [puNom, puUp, puDown]
 
 
-def getLumiMaskRun2(IOV):
+def getLumiMask(IOV):
 
-    golden_json_path_2016 = "data/corrections/goldenJsons/Cert_271036-284044_13TeV_Legacy2016_Collisions16_JSON.txt"
-    golden_json_path_2017 = "data/corrections/goldenJsons/Cert_294927-306462_13TeV_UL2017_Collisions17_GoldenJSON.txt"
-    golden_json_path_2018 = "data/corrections/goldenJsons/Cert_314472-325175_13TeV_Legacy2018_Collisions18_JSON.txt"
+    golden_json_path_2022 = "data/corrections/goldenJsons/Cert_Collisions2022_355100_362760_Golden.json"
+    golden_json_path_2023 = "data/corrections/goldenJsons/Cert_Collisions2023_366442_370790_Golden.json"
+    golden_json_path_2024 = "data/corrections/goldenJsons/Cert_Collisions2024_378981_386951_Golden.json"
+    golden_json_path_2025 = "data/corrections/goldenJsons/Cert_Collisions2025_391658_398860_Golden.json"
     
 
-    masks = {"2016APV":LumiMask(golden_json_path_2016),
-             "2016":LumiMask(golden_json_path_2016),
-             "2017":LumiMask(golden_json_path_2017),
-             "2018":LumiMask(golden_json_path_2018)
+    masks = {"2022":LumiMask(golden_json_path_2022),
+             "2023":LumiMask(golden_json_path_2023),
+             "2024":LumiMask(golden_json_path_2024),
+             "2025":LumiMask(golden_json_path_2025),
             }
 
     return masks[IOV]

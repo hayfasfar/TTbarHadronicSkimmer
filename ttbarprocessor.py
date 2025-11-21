@@ -42,7 +42,7 @@ from corrections import (
     GetPDFWeights,
     GetPUSF,
     GetQ2weights,
-    getLumiMaskRun2,
+    getLumiMask,
     getMETFilter,
     pTReweighting,
 )
@@ -393,7 +393,7 @@ class TTbarResProcessor(processor.ProcessorABC):
         # lumi mask #
         if (isData):
             
-            lumi_mask = np.array(getLumiMaskRun2(self.iov)(events.run, events.luminosityBlock), dtype=bool)
+            lumi_mask = np.array(getLumiMask(self.iov)(events.run, events.luminosityBlock), dtype=bool)
             events = events[lumi_mask]
             del lumi_mask
 
