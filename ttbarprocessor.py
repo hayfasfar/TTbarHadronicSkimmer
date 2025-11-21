@@ -132,16 +132,16 @@ class TTbarResProcessor(processor.ProcessorABC):
         # from https://twiki.cern.ch/twiki/bin/view/CMS/DeepAK8Tagging2018WPsSFs#2016_Data
         deepak8cuts = {
             'loose':{ # 1%
-                '2016APV': 0.435, 
-                '2016':    0.435,
-                '2017':    0.344,
-                '2018':    0.470,
+                '2022': 0.435, 
+                '2023':    0.435,
+                '2024':    0.344,
+                '2025':    0.470,
             },
             'medium':{ # 0.5%
-                '2016APV': 0.632, 
-                '2016':    0.632,
-                '2017':    0.554,
-                '2018':    0.685,
+                '2022': 0.632, 
+                '2023':    0.632,
+                '2024':    0.554,
+                '2025':    0.685,
             },
             'tight': { # 0.1%
                 '2016APV': 0.889, 
@@ -274,17 +274,14 @@ class TTbarResProcessor(processor.ProcessorABC):
             vals = (events.genWeight - average ) / stddev
             events = events[(np.abs(vals) < 2)]
 
-        
-        isData = ('JetHT' in events.metadata['dataset']) or ('SingleMu' in events.metadata['dataset'])
-        
+        isData = ('data' in events.metadata['dataset']) or ('SingleMu' in events.metadata['dataset'])
         noCorrections = (not 'jes' in self.systematics and not 'jer' in self.systematics)
 
         if noCorrections or self.noSyst or isData:
             return self.process_analysis(events, 'nominal', nEvents)
         
-        
+
         FatJets = events.FatJet
-        GenJets = events.GenJet
         Jets = events.Jet
         run = events.run
         lumi = events.luminosityBlock
@@ -292,22 +289,19 @@ class TTbarResProcessor(processor.ProcessorABC):
         Met = events.MET
         #print("dictionary of MET ", events.MET.fields)
         
+        if not isData :
+            GenJets = events.GenJet
+            GenJets["p4"] = ak.with_name(GenJets[["pt", "eta", "phi", "mass"]],"PtEtaPhiMLorentzVector")
+            GenJets["p4"] = ak.with_name(GenJets[["pt", "eta", "phi", "mass"]],"PtEtaPhiMLorentzVector")
+            FatJets["matched_gen_0p2"] = FatJets.p4.nearest(GenJets.p4, threshold=0.2)
+            FatJets["pt_gen"] = ak.values_astype(ak.fill_none(FatJets.matched_gen_0p2.pt, 0), np.float32)
                 
-        
         FatJets["p4"] = ak.with_name(FatJets[["pt", "eta", "phi", "mass"]],"PtEtaPhiMLorentzVector")
-        GenJets["p4"] = ak.with_name(GenJets[["pt", "eta", "phi", "mass"]],"PtEtaPhiMLorentzVector")
         Jets["p4"]    = ak.with_name(Jets[["pt", "eta", "phi", "mass"]],"PtEtaPhiMLorentzVector")
 
         
-        FatJets["p4"] = ak.with_name(FatJets[["pt", "eta", "phi", "mass"]],"PtEtaPhiMLorentzVector")
-        GenJets["p4"] = ak.with_name(GenJets[["pt", "eta", "phi", "mass"]],"PtEtaPhiMLorentzVector")
-        Jets["p4"]    = ak.with_name(Jets[["pt", "eta", "phi", "mass"]],"PtEtaPhiMLorentzVector")
 
-        FatJets["matched_gen_0p2"] = FatJets.p4.nearest(GenJets.p4, threshold=0.2)
-        FatJets["pt_gen"] = ak.values_astype(ak.fill_none(FatJets.matched_gen_0p2.pt, 0), np.float32)
 
-        Jets["matched_gen_0p2"] = Jets.p4.nearest(GenJets.p4, threshold=0.2)
-        Jets["pt_gen"] = ak.values_astype(ak.fill_none(Jets.matched_gen_0p2.pt, 0), np.float32)
 
 
         corrected_fatjets = GetJECUncertainties(FatJets, events, self.iov, R='AK8', isData=isData)
@@ -373,7 +367,7 @@ class TTbarResProcessor(processor.ProcessorABC):
 
                 
         isNominal = (correction=='nominal')
-        isData = ('JetHT' in dataset) or ('SingleMu' in dataset)
+        isData = ('data' in dataset) or ('SingleMu' in dataset)
 
         
         
@@ -419,13 +413,18 @@ class TTbarResProcessor(processor.ProcessorABC):
 
         triggernames = { 
 
-        "2016APV": ["PFHT900", "AK8PFJet450"],
-        "2016" :   ["PFHT900", "AK8PFJet450"],
-        "2017" :   ["PFHT1050", "AK8PFJet500"],
-        "2018" :   ["PFHT1050", "AK8PFJet500"],
+        "2022": ["PFHT1050"],
+        "2023" :   ["PFHT1050"],
+        "2024" :   ["PFHT1050"],
+        "2025" :   ["PFHT1050"],
 
         }
-
+        '''
+        if "HLT" in events.fields:
+         print("HLT paths in this file:")
+         for hlt_name in events.HLT.fields:
+            print(hlt_name)
+        '''
         try:
             selection.add('trigger', (events.HLT[triggernames[self.iov][0]] | events.HLT[triggernames[self.iov][1]]) )
         except:
@@ -448,6 +447,7 @@ class TTbarResProcessor(processor.ProcessorABC):
         Jets["p4"]    = ak.with_name(Jets[["pt", "eta", "phi", "mass"]],"PtEtaPhiMLorentzVector")
 
         if not isData:
+            print ("does it happen here?")
             GenJets = events.GenJet
             GenJets["p4"] = ak.with_name(GenJets[["pt", "eta", "phi", "mass"]],"PtEtaPhiMLorentzVector")
                     
