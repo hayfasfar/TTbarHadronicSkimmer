@@ -322,45 +322,31 @@ def getLumiMask(IOV):
 
 def getMETFilter(IOV, events):
  
-    # Reference: https://twiki.cern.ch/twiki/bin/viewauth/CMS/MissingETOptionalFiltersRun2#2018_2017_data_and_MC_UL
-    MET_filters = {'2016APV': [
+    # Reference: https://twiki.cern.ch/twiki/bin/viewauth/CMS/MissingETOptionalFiltersRun2#Run_3_2022_and_2023_data_and_MC
+    MET_filters = {'2022': [
                                 "goodVertices",
                                 "globalSuperTightHalo2016Filter",
-                                "HBHENoiseFilter",
-                                "HBHENoiseIsoFilter",
                                 "EcalDeadCellTriggerPrimitiveFilter",
                                 "BadPFMuonFilter",
                                 "BadPFMuonDzFilter",
                                 "eeBadScFilter",
+                                "ecalBadCalibFilter"],
                                 "hfNoisyHitsFilter"
                                ],
-                       '2016'   :["goodVertices",
+                       '2023'   :["goodVertices",
                                   "globalSuperTightHalo2016Filter",
-                                  "HBHENoiseFilter",
-                                  "HBHENoiseIsoFilter",
                                   "EcalDeadCellTriggerPrimitiveFilter",
                                   "BadPFMuonFilter",
                                   "BadPFMuonDzFilter",
-                                  "eeBadScFilter",
-                                  "hfNoisyHitsFilter"],
-                       '2017'   :["goodVertices",
-                                  "globalSuperTightHalo2016Filter",
-                                  "HBHENoiseFilter",
-                                  "HBHENoiseIsoFilter",
-                                  "EcalDeadCellTriggerPrimitiveFilter",
-                                  "BadPFMuonFilter",
-                                  # "BadPFMuonDzFilter",
-                                  # "hfNoisyHitsFilter",
+                                  "hfNoisyHitsFilter",
                                   "eeBadScFilter",
                                   "ecalBadCalibFilter"],
-                       '2018'   :["goodVertices",
+                       '2024'   :["goodVertices",
                                   "globalSuperTightHalo2016Filter",
-                                  "HBHENoiseFilter",
-                                  "HBHENoiseIsoFilter",
                                   "EcalDeadCellTriggerPrimitiveFilter",
                                   "BadPFMuonFilter",
-                                  # "BadPFMuonDzFilter",
-                                  # "hfNoisyHitsFilter",
+                                  "BadPFMuonDzFilter",
+                                  "hfNoisyHitsFilter",
                                   "eeBadScFilter",
                                   "ecalBadCalibFilter"]}
     
