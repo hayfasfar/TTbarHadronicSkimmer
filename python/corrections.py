@@ -330,7 +330,7 @@ def getMETFilter(IOV, events):
                                 "BadPFMuonFilter",
                                 "BadPFMuonDzFilter",
                                 "eeBadScFilter",
-                                "ecalBadCalibFilter"],
+                                "ecalBadCalibFilter",
                                 "hfNoisyHitsFilter"
                                ],
                        '2023'   :["goodVertices",

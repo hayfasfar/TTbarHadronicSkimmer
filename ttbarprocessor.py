@@ -280,14 +280,13 @@ class TTbarResProcessor(processor.ProcessorABC):
         if noCorrections or self.noSyst or isData:
             return self.process_analysis(events, 'nominal', nEvents)
         
-
+        
         FatJets = events.FatJet
         Jets = events.Jet
         run = events.run
         lumi = events.luminosityBlock
         evt = events.event
         Met = events.MET
-        #print("dictionary of MET ", events.MET.fields)
         
         if not isData :
             GenJets = events.GenJet
@@ -301,7 +300,7 @@ class TTbarResProcessor(processor.ProcessorABC):
 
         
 
-
+        
 
 
         corrected_fatjets = GetJECUncertainties(FatJets, events, self.iov, R='AK8', isData=isData)
@@ -441,13 +440,20 @@ class TTbarResProcessor(processor.ProcessorABC):
         run = events.run.to_numpy()
         lumi = events.luminosityBlock.to_numpy()
         evt = events.event.to_numpy()
-       
+        '''
+        print("\n--- FatJet variables ---")
+        for var in events.FatJet.fields:
+            print("FatJet_" + var)
+
+        print("\n--- SubJet variables ---")
+        for var in events.SubJet.fields:
+            print("SubJet_" + var)
+        '''
         FatJets["p4"] = ak.with_name(FatJets[["pt", "eta", "phi", "mass"]],"PtEtaPhiMLorentzVector")
         SubJets["p4"] = ak.with_name(SubJets[["pt", "eta", "phi", "mass"]],"PtEtaPhiMLorentzVector")
         Jets["p4"]    = ak.with_name(Jets[["pt", "eta", "phi", "mass"]],"PtEtaPhiMLorentzVector")
 
         if not isData:
-            print ("does it happen here?")
             GenJets = events.GenJet
             GenJets["p4"] = ak.with_name(GenJets[["pt", "eta", "phi", "mass"]],"PtEtaPhiMLorentzVector")
                     
@@ -569,12 +575,12 @@ class TTbarResProcessor(processor.ProcessorABC):
         SortedFatJets = FatJets[FatJet_pt_argsort]
 
         # higher deepak8 discriminator will be used for jet in mt of mt vs mtt distribution
-        jet0 = ak.where(SortedFatJets[:,0].deepTagMD_TvsQCD > SortedFatJets[:,1].deepTagMD_TvsQCD,
+        jet0 = ak.where(SortedFatJets[:,0].particleNet_XttVsQCD > SortedFatJets[:,1].particleNet_XttVsQCD,
                             SortedFatJets[:,0],
                             SortedFatJets[:,1]
                                    )
             
-        jet1 = ak.where(SortedFatJets[:,0].deepTagMD_TvsQCD > SortedFatJets[:,1].deepTagMD_TvsQCD,
+        jet1 = ak.where(SortedFatJets[:,0].particleNet_XttVsQCD > SortedFatJets[:,1].particleNet_XttVsQCD,
                             SortedFatJets[:,1],
                             SortedFatJets[:,0]
                                    )
@@ -586,7 +592,7 @@ class TTbarResProcessor(processor.ProcessorABC):
 
         logger.debug('SortedFatJets:%s:FatJets.pt:%s:%s', time.time(), FatJets.pt, correction)
         logger.debug('SortedFatJets:%s:SortedFatJets.pt:%s:%s', time.time(), SortedFatJets.pt, correction)
-        logger.debug('SortedFatJets:%s:SortedFatJets.deepTagMD_TvsQCD:%s:%s', time.time(), SortedFatJets.deepTagMD_TvsQCD, correction)
+        logger.debug('SortedFatJets:%s:SortedFatJets.deepTagMD_TvsQCD:%s:%s', time.time(), SortedFatJets.particleNet_XttVsQCD, correction)
         logger.debug('SortedFatJets:%s:jet0.pt:%s:%s', time.time(), jet0.pt, correction)
         logger.debug('SortedFatJets:%s:jet1.pt:%s:%s', time.time(), jet1.pt, correction)
 
@@ -595,15 +601,15 @@ class TTbarResProcessor(processor.ProcessorABC):
 
         # signal = pass region for 2DAlphabet
         # both jets pass deepak8 tagger
-        ttag_s0 = (jet0.deepTagMD_TvsQCD > self.deepAK8disc)
-        ttag_s1 = (jet1.deepTagMD_TvsQCD > self.deepAK8disc) & (mcut_s1)
-        ttag_s0_1 = (jet0.deepTagMD_TvsQCD > self.deepAK8disc)
-        ttag_s1_1 = (jet1.deepTagMD_TvsQCD > self.deepAK8disc) & (mcut_s1)
+        ttag_s0 = (jet0.particleNet_XttVsQCD > self.deepAK8disc)
+        ttag_s1 = (jet1.particleNet_XttVsQCD > self.deepAK8disc) & (mcut_s1)
+        ttag_s0_1 = (jet0.particleNet_XttVsQCD > self.deepAK8disc)
+        ttag_s1_1 = (jet1.particleNet_XttVsQCD > self.deepAK8disc) & (mcut_s1)
             
         # antitag = fail region for 2DAlphabet
         # leading (in deepak8 disc) jet passes deepak8 tagger
         # subleading (in deepak8 disc) jet fails deepak8 tagger         
-        antitag_disc = ((jet1.deepTagMD_TvsQCD < self.deepAK8disc) & (jet1.deepTagMD_TvsQCD > self.deepAK8low))
+        antitag_disc = ((jet1.particleNet_XttVsQCD < self.deepAK8disc) & (jet1.particleNet_XttVsQCD > self.deepAK8low))
         antitag = (antitag_disc) & (ttag_s0) & (mcut_s1)
 
 
@@ -704,8 +710,8 @@ class TTbarResProcessor(processor.ProcessorABC):
         bdisc_s1 = np.maximum(SubJet10.btagDeepB , SubJet11.btagDeepB)
         
         
-        tdisc_s0 = jet0.deepTagMD_TvsQCD
-        tdisc_s1 = jet1.deepTagMD_TvsQCD
+        tdisc_s0 = jet0.particleNet_XttVsQCD
+        tdisc_s1 = jet1.particleNet_XttVsQCD
         
         
         
