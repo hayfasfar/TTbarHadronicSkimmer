@@ -49,7 +49,7 @@ if __name__ == "__main__":
                         action='append'
                        )
     
-    parser.add_argument('--iov', choices=['2022', '2023', '2024'], default='2016')
+    parser.add_argument('--iov', choices=['2022', '2023', '2024'], default='2024')
     parser.add_argument('--signals', action='store_true', help='run only signal samples')
     
     
