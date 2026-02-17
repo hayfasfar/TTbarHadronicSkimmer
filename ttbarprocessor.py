@@ -33,7 +33,6 @@ sys.path.append(os.getcwd()+'/python/')
 
 from corrections import (
     GetFlavorEfficiency,
-    HEMCleaning,
     getLumiMask,
     getMETFilter,
 )
@@ -43,7 +42,7 @@ from categories import build_analysis_categories
 from jets import Run3JetManager
 from hists import build_output_histograms
 from weights import Run3WeightManager
-
+from truthstudy import truthstudy_counts
 
 
 
@@ -81,10 +80,10 @@ def update(events, collections):
     return out
 
 
-"""Package to perform the data-driven mistag-rate-based ttbar hadronic analysis. """
+"""Skimmer Class to apply event selections and store needed variables."""
 class TTbarResProcessor(processor.ProcessorABC):
     def __init__(self,
-                 htCut=1400.,
+                 htCut=900.,
                  ak8PtMin=400.,
                  minMSD=105.,
                  maxMSD=210.,
@@ -387,37 +386,63 @@ class TTbarResProcessor(processor.ProcessorABC):
 
         if not isData: GenJets = GenJets[eventCut]
             
-
+        ##Add GenTruth study
+        if isNominal and (not isData):
+            truth_counts = truthstudy_counts(
+                genparts=events.GenPart,
+                fatjets=FatJets,
+                subJets=SubJets,
+                jets=Jets,
+                dr_ak8=0.8,
+                dr_ak4=1.2,
+            )
+            output["truthstudy"]["n_hadtop"] += truth_counts["n_hadtop"]
+            output["truthstudy"]["n_hadtop_ak8"] += truth_counts["n_hadtop_ak8"]
+            output["truthstudy"]["n_hadtop_ak8_ak4"] += truth_counts["n_hadtop_ak8_ak4"]
+  
 
     
-        logger.debug('JEC:%s:ttbar cand JES:%s:%s', time.time(), FatJets.pt, correction)    
+        #logger.debug('JEC:%s:ttbar cand JES:%s:%s', time.time(), FatJets.pt, correction)    
 
         # sort jets by pt to select two leading jets
+       
         FatJet_pt_argsort = ak.argsort(FatJets.pt, ascending=False) 
         SortedFatJets = FatJets[FatJet_pt_argsort]
-
+        
         # higher deepak8 discriminator will be used for jet in mt of mt vs mtt distribution
-        jet0 = ak.where(SortedFatJets[:,0].particleNet_XttVsQCD > SortedFatJets[:,1].particleNet_XttVsQCD,
+        if (self.iov == '2023'):
+            jet0 = ak.where(SortedFatJets[:,0].particleNet_XttVsQCD > SortedFatJets[:,1].particleNet_XttVsQCD,
                             SortedFatJets[:,0],
                             SortedFatJets[:,1]
                                    )
             
-        jet1 = ak.where(SortedFatJets[:,0].particleNet_XttVsQCD > SortedFatJets[:,1].particleNet_XttVsQCD,
+            jet1 = ak.where(SortedFatJets[:,0].particleNet_XttVsQCD > SortedFatJets[:,1].particleNet_XttVsQCD,
                             SortedFatJets[:,1],
                             SortedFatJets[:,0]
-                                   )
+                                )
+        elif (self.iov == '2024'):
 
+              jet0 = ak.where(SortedFatJets[:,0].globalParT3_TopbWqq > SortedFatJets[:,1].globalParT3_TopbWqq,
+                            SortedFatJets[:,0],
+                            SortedFatJets[:,1]
+               )
+            
+              jet1 = ak.where(SortedFatJets[:,0].globalParT3_TopbWqq > SortedFatJets[:,1].globalParT3_TopbWqq,
+                            SortedFatJets[:,1],
+                            SortedFatJets[:,0]
+
+              )
         mcut_s0 = ((self.minMSD < jet0.msoftdrop) & (jet0.msoftdrop < self.maxMSD) )
         mcut_s1 = ((self.minMSD < jet1.msoftdrop) & (jet1.msoftdrop < self.maxMSD) )
 
 
-
+        '''
         logger.debug('SortedFatJets:%s:FatJets.pt:%s:%s', time.time(), FatJets.pt, correction)
         logger.debug('SortedFatJets:%s:SortedFatJets.pt:%s:%s', time.time(), SortedFatJets.pt, correction)
         logger.debug('SortedFatJets:%s:SortedFatJets.deepTagMD_TvsQCD:%s:%s', time.time(), SortedFatJets.particleNet_XttVsQCD, correction)
         logger.debug('SortedFatJets:%s:jet0.pt:%s:%s', time.time(), jet0.pt, correction)
         logger.debug('SortedFatJets:%s:jet1.pt:%s:%s', time.time(), jet1.pt, correction)
-
+        '''
 
         del FatJet_pt_argsort, SortedFatJets
 
@@ -498,24 +523,7 @@ class TTbarResProcessor(processor.ProcessorABC):
           df = pd.DataFrame(output["event_list"])
           print("rows:", len(df))
           print("duplicates:", df.duplicated(["run","lumi","event"]).sum())
-        ''' 
-        df = pd.DataFrame({
-        # ... your existing columns ...
-         "run": run,
-         "event": evt,
-         "lumi": lumi,
-        })
        
-        df["event_id"] = df["run"].astype(str) + ":" + df["event"].astype(str) + ":" + df["lumi"].astype(str)
-        import sys
-
-        lines = df["event_id"].astype(str).tolist()
-        #with open("/uscms_data/d3/haifasf/TTbarHadronicSkimmer/selected_events.txt", "w") as f:   # choose your filename here
-        with open("selected_events.txt", "w") as f:   # choose your filename here
-            #sys.stdout.write("\n".join(lines) + "\n")
-            f.write("\n".join(lines) + "\n")
-        '''
-
 
         if not isData: GenJets = GenJets[ttbarcandCuts]
         del dPhiCut, ttbarcandCuts, hasSubjets0, hasSubjets1, GoodSubjets
