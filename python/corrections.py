@@ -58,8 +58,8 @@ def GetJECUncertainties(FatJets, events, IOV, R='AK8', isData=False):
 
     # original code https://gitlab.cern.ch/gagarwal/ttbardileptonic/-/blob/master/jmeCorrections.py
     
-    chspuppi = 'Puppi' if 'AK8' in R else 'chs'
-    
+    #chspuppi = 'Puppi' if 'AK8' in R else 'chs'
+    chspuppi = "Puppi" # always puppi in run3
 
     jer_tag=None
     if (IOV=='2018'):
@@ -89,6 +89,7 @@ def GetJECUncertainties(FatJets, events, IOV, R='AK8', isData=False):
             "RunH": "Summer19UL16_RunFGH_V7_DATA",
         }
         jer_tag = "Summer20UL16_JRV3_MC"
+    
     elif (IOV=='2016APV'):
         jec_tag="Summer19UL16_V7_MC"
         ## HIPM/APV     : B_ver1, B_ver2, C, D, E, F
@@ -103,6 +104,12 @@ def GetJECUncertainties(FatJets, events, IOV, R='AK8', isData=False):
             "RunF": "Summer19UL16APV_RunEF_V7_DATA",
         }
         jer_tag = "Summer20UL16APV_JRV3_MC"
+    elif (IOV=="2024"):
+        jec_tag = "Summer24Prompt24_V2_MC"
+
+        jec_tag_data= {}
+
+        #jer_tag = "Summer23BPixPrompt23_RunD_JRV1_MC"
     else:
         raise ValueError(f"Error: Unknown year \"{IOV}\".")
 
@@ -177,13 +184,14 @@ def GetJECUncertainties(FatJets, events, IOV, R='AK8', isData=False):
 
     FatJets['pt_raw'] = (1 - FatJets['rawFactor']) * FatJets['pt']
     FatJets['mass_raw'] = (1 - FatJets['rawFactor']) * FatJets['mass']
-    FatJets['rho'] = ak.broadcast_arrays(events.fixedGridRhoFastjetAll, FatJets.pt)[0]
+    FatJets['rho'] = ak.broadcast_arrays(events.Rho.fixedGridRhoFastjetAll, FatJets.pt)[0]
 
     name_map = jec_stack.blank_name_map
     name_map['JetPt'] = 'pt'
     name_map['JetMass'] = 'mass'
     name_map['JetEta'] = 'eta'
     name_map['JetA'] = 'area'
+    name_map['JetPhi'] = 'phi'
     name_map['ptGenJet'] = 'pt_gen'
     name_map['ptRaw'] = 'pt_raw'
     name_map['massRaw'] = 'mass_raw'
@@ -192,7 +200,6 @@ def GetJECUncertainties(FatJets, events, IOV, R='AK8', isData=False):
 
 
     events_cache = events.caches[0]
-
     jet_factory = CorrectedJetsFactory(name_map, jec_stack)
     corrected_jets = jet_factory.build(FatJets, lazy_cache=events_cache)
 

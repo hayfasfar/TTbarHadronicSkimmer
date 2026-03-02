@@ -221,11 +221,13 @@ class TTbarResProcessor(processor.ProcessorABC):
         isData = ('data' in events.metadata['dataset']) or ('SingleMu' in events.metadata['dataset'])
         corrections = self.jet_manager.build_corrections(events, isData)
         if corrections is None:
+            print("Returning nominal")
             return self.process_analysis(events, 'nominal', nEvents)
 
         # loop through corrections
         outputs = []
         for collections, name in corrections:
+            print(f"Looping through {name}")
             outputs.append(self.process_analysis(update(events, collections), name, nEvents))
 
 
@@ -623,6 +625,17 @@ class TTbarResProcessor(processor.ProcessorABC):
             
             if isNominal:
                 output['cutflow'][ilabel] += len(events.event[icat])
+            output['jetmsd'].fill(
+                                   systematic=correction,
+                                   anacat = i,
+                                   jetmass = jetmsd[icat],
+                                   weight = self.weights[correction].weight()[icat],
+                                  )
+            output['ttbarmass'].fill(systematic=correction,
+                                         anacat = i,
+                                         ttbarmass = ttbarmass[icat],
+                                         weight = self.weights[correction].weight()[icat],
+                                        )
                
             '''
             output['jetdy'].fill(
@@ -691,6 +704,17 @@ class TTbarResProcessor(processor.ProcessorABC):
             output['systematics'][correction] += len(events.event[icat])
 
             if isNominal:  
+                output['jetmsd'].fill(
+                                   systematic=correction,
+                                   anacat = i,
+                                   jetmass = jetmsd[icat],
+                                   weight = self.weights[correction].weight()[icat],
+                                  )
+                output['ttbarmass'].fill(systematic=correction,
+                                             anacat = i,
+                                             ttbarmass = ttbarmass[icat],
+                                             weight = self.weights[correction].weight()[icat],
+                                            )
 
                 for syst in self.weights[correction].variations:
                     

@@ -96,7 +96,7 @@ if __name__ == "__main__":
     useDeepAK8 = True if (args.toptagger == 'deepak8') else False
     useDeepCSV = True if (args.btagger == 'deepcsv') else False
     htCut = 1400.0 if (args.ht == '1400') else 950.0
-    dask_memory = '3GB' # priority decreases for >2GB memory
+    dask_memory = '4GB' # priority decreases for >2GB memory
     chunksize_dask = 100000
     chunksize_futures = 10000
     maxchunks = 10 if args.test else None
@@ -139,12 +139,16 @@ if __name__ == "__main__":
         'ttag_pt2',
         'ttag_pt3'
     ]
+
+    
     
     if ('2016' in IOV) or ('2017' in IOV): systematics.append('prefiring')
 
     if args.bkgest == '2dalphabet': systematics.append('transferFunction')
 
-     
+
+    ## introducing test to check if jer works
+    systematics = ['nominal', 'jes']
     # make analysis categories 
     ttagcats = ["at", "2t"]
     ycats = ['cen', 'fwd']
@@ -383,7 +387,7 @@ if __name__ == "__main__":
                         if args.nocluster:
                             cluster = None
                         else:
-                            cluster = LPCCondorCluster(memory=dask_memory, transfer_input_files=upload_to_dask)
+                            cluster = LPCCondorCluster(memory=dask_memory, transfer_input_files=upload_to_dask, scheduler_options={"dashboard_address": ":8787"})
                             cluster.adapt(minimum=1, maximum=100)
                     else:
                         cluster = None
