@@ -591,7 +591,6 @@ class TTbarResProcessor(processor.ProcessorABC):
             antitag=antitag,
         )
                         
-        
         # kinematics variables for plotting
         jetpt = jet0.p4.pt
         jeteta = jet0.p4.eta
