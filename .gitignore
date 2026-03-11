@@ -46,3 +46,7 @@ condor_config/
 
 # temp notebooks
 Untitled*.ipynb
+
+# Ignoring all things not needed for Haifa
+.python-version
+coffea_env/
