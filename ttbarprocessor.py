@@ -57,15 +57,46 @@ logger.setLevel(logging.DEBUG)
 ak.behavior.update(vector.behavior)
 
 
-
-def get_memory_usage():
+# ...existing code...
+def get_memory_usage(human_readable=True, precision=2):
     process = psutil.Process(os.getpid())
-    memory_info = process.memory_info()
-    memory_usage_bytes = memory_info.rss
-    memory_usage_mb = memory_usage_bytes / (1024 * 1024)
+    memory_usage_bytes = process.memory_info().rss
 
-    return memory_usage_mb
+    if not human_readable:
+        # return MB as before if numeric value is needed
+        return memory_usage_bytes / (1024 * 1024)
 
+    units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+    size = float(memory_usage_bytes)
+    unit_index = 0
+    while size >= 1024 and unit_index < len(units) - 1:
+        size /= 1024.0
+        unit_index += 1
+
+    return f"{size:.{precision}f} {units[unit_index]}"
+# ...existing code...
+# def get_memory_usage():
+#     process = psutil.Process(os.getpid())
+#     memory_info = process.memory_info()
+#     memory_usage_bytes = memory_info.rss
+#     memory_usage_mb = memory_usage_bytes / (1024 * 1024)
+
+#     return memory_usage_mb
+
+class Logger:
+    DEBUG = 10
+    INFO = 20
+
+    def __init__(self, mode='debug'):
+        self.level = self.DEBUG if mode == 'debug' else self.INFO
+
+    def debug(self, msg, *args):
+        if self.level <= self.DEBUG:
+            print('[DEBUG]', msg % args if args else msg)
+
+    def info(self, msg, *args):
+        if self.level <= self.INFO:
+            print('[INFO]', msg % args if args else msg)
 
 
 def update(events, collections):
@@ -96,8 +127,9 @@ class TTbarResProcessor(processor.ProcessorABC):
                  bkgEst=False,
                  noSyst=False,
                  blinding=False,
-                 systematics = ['nominal', 'pileup'],
+                 systematics = ['nominal', 'pileup', 'pdf', 'q2', "ttag_pt1"],
                  anacats = ['2t0bcen'],
+                 debug = False
                  #rpf_params = {'params':[1.0], 'errors':[0.0]},
                 ):
                  
@@ -116,6 +148,7 @@ class TTbarResProcessor(processor.ProcessorABC):
         self.noSyst = noSyst
         self.systematics = systematics
         self.blinding = blinding
+        self.debug = debug  
         #self.rpf_params = rpf_params        
     
         # from https://twiki.cern.ch/twiki/bin/view/CMS/DeepAK8Tagging2018WPsSFs#2016_Data
@@ -141,7 +174,8 @@ class TTbarResProcessor(processor.ProcessorABC):
         }
     
         
-        
+        self.logger = Logger(mode='debug' if debug else 'info')
+
         self.weights = {}
         self.jet_manager = Run3JetManager(
             iov=self.iov,
@@ -220,6 +254,7 @@ class TTbarResProcessor(processor.ProcessorABC):
 
         isData = ('data' in events.metadata['dataset']) or ('SingleMu' in events.metadata['dataset'])
         corrections = self.jet_manager.build_corrections(events, isData)
+        self.logger.debug(f'corrections {[label for _, label in corrections]}')
         if corrections is None:
             print("Returning nominal")
             return self.process_analysis(events, 'nominal', nEvents)
@@ -240,7 +275,8 @@ class TTbarResProcessor(processor.ProcessorABC):
         dataset = events.metadata['dataset']
         filename = events.metadata['filename']
         
-        logger.debug('memory:%s: start processor %s:%s', time.time(), correction, get_memory_usage())
+        self.logger.debug('start processor: correction=%s, memory=%s', correction, get_memory_usage())
+        
 
                 
         isNominal = (correction=='nominal')
@@ -576,7 +612,7 @@ class TTbarResProcessor(processor.ProcessorABC):
     
     
     
-        logger.debug('memory:%s: get analysis categories %s:%s', time.time(), correction, get_memory_usage())
+        #logger.debug('memory:%s: get analysis categories %s:%s', time.time(), correction, get_memory_usage())
 
         
         antitag_probe = np.logical_and(antitag, ttag_s1)
@@ -615,8 +651,8 @@ class TTbarResProcessor(processor.ProcessorABC):
         numerator = np.where(antitag_probe, jet1.p4.p, -1)
         denominator = np.where(antitag, jet1.p4.p, -1)
         
-        logger.debug('JEC:%s:histogram JES:%s:%s', time.time(), FatJets.pt, correction)
-        
+        #logger.debug('JEC:%s:histogram JES:%s:%s', time.time(), FatJets.pt, correction)
+        #self.logger.debug("Labels and categories: %s", labels_and_categories.items())
         
         for i, [ilabel,icat] in enumerate(labels_and_categories.items()):
     
@@ -703,19 +739,21 @@ class TTbarResProcessor(processor.ProcessorABC):
             output['systematics'][correction] += len(events.event[icat])
 
             if isNominal:  
-                output['jetmsd'].fill(
-                                   systematic=correction,
-                                   anacat = i,
-                                   jetmass = jetmsd[icat],
-                                   weight = self.weights[correction].weight()[icat],
-                                  )
-                output['ttbarmass'].fill(systematic=correction,
-                                             anacat = i,
-                                             ttbarmass = ttbarmass[icat],
-                                             weight = self.weights[correction].weight()[icat],
-                                            )
 
-                for syst in self.weights[correction].variations:
+
+                for syst in self.weights[correction].variations: # Filling for non jet systematics here
+                    output['jetmsd'].fill(
+                                systematic=syst,
+                                anacat = i,
+                                jetmass = jetmsd[icat],
+                                weight = self.weights[correction].weight(syst)[icat],
+                                )
+                    output['ttbarmass'].fill(
+                                        systematic=syst,
+                                        anacat = i,
+                                        ttbarmass = ttbarmass[icat],
+                                        weight = self.weights[correction].weight(syst)[icat],
+                                        )
                     
                     '''
                     output['weights'][syst] += np.sum(self.weights[correction].weight(syst))

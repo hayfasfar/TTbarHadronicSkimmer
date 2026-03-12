@@ -16,7 +16,7 @@ venv/
 
 # Outputs
 outputs/
-plots/
+
 *.pkl
 *.root
 
@@ -50,3 +50,5 @@ Untitled*.ipynb
 # Ignoring all things not needed for Haifa
 .python-version
 coffea_env/
+
+.last_config.json
