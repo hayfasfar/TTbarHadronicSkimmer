@@ -148,7 +148,7 @@ if __name__ == "__main__":
 
 
     ## introducing test to check if jer works
-    systematics = ['nominal', 'jes']
+    systematics = ['nominal', 'jes', 'pileup']
     # make analysis categories 
     ttagcats = ["at", "2t"]
     ycats = ['cen', 'fwd']

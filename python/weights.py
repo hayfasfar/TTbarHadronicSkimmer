@@ -67,6 +67,12 @@ class Run3WeightManager:
                 "medium": {"nominal": [0.90, 0.97, 0.98, 0.95], "up": [0.95, 1.0, 1.01, 0.98], "down": [0.85, 0.94, 0.95, 0.92]},
                 "loose": {"nominal": [0.96, 1.00, 0.98, 0.99], "up": [1.0, 1.03, 1.0, 1.02], "down": [0.92, 0.97, 0.96, 0.96]},
             },
+            ## Placeholder please replace with real numbers when available
+            "2024": {
+                "tight": {"nominal": [0.81, 0.93, 0.96, 0.93], "up": [0.88, 0.98, 1.02, 1.01], "down": [0.74, 0.88, 0.92, 0.85]},
+                "medium": {"nominal": [0.90, 0.97, 0.98, 0.95], "up": [0.95, 1.0, 1.01, 0.98], "down": [0.85, 0.94, 0.95, 0.92]},
+                "loose": {"nominal": [0.96, 1.00, 0.98, 0.99], "up": [1.0, 1.03, 1.0, 1.02], "down": [0.92, 0.97, 0.96, 0.96]},
+            }
         }
 
         nomsf = np.array(ttag_scale_factors[self.iov][self.deepak8_cut]["nominal"])

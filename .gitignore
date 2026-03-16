@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Environments
+.env/
+venv/
+.venv/
+
+# Logs
+*.log
+
+# Outputs
+outputs/
+
+*.pkl
+*.root
+
+# Local configs
+local/
+*.yaml.local
+# local system configs
+.bashrc
+.local/
+.ipython/
+.cmslpc-local-conf
+.condor_config
+bootstrap.sh
+# System
+.Trash*
+.DS_Store
+
+# Condor
+condor/
+condor_config/
+
+# VSCode
+.vscode/
+
+# Cache
+.cache/
+
+# temp notebooks
+Untitled*.ipynb
+
+# Ignoring all things not needed for Haifa
+.python-version
+coffea_env/
+
+.last_config.json

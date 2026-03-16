@@ -243,13 +243,16 @@ def GetPDFWeights(events):
 def GetPUSF(events, IOV):
     # original code https://gitlab.cern.ch/gagarwal/ttbardileptonic/-/blob/master/TTbarDileptonProcessor.py#L38
     ## json files from: https://gitlab.cern.ch/cms-nanoAOD/jsonpog-integration/-/tree/master/POG/LUM
-        
-    fname = "data/corrections/puWeights/{0}_UL/puWeights.json.gz".format(IOV)
+    if IOV.endswith("UL"):
+        fname = "data/corrections/puWeights/{0}_UL/puWeights.json.gz".format(IOV)
+    elif IOV == "2024":
+        fname = "data/corrections/puWeights/2023_Summer23BPix/puWeights.json.gz"
     hname = {
         "2016APV": "Collisions16_UltraLegacy_goldenJSON",
         "2016"   : "Collisions16_UltraLegacy_goldenJSON",
         "2017"   : "Collisions17_UltraLegacy_goldenJSON",
-        "2018"   : "Collisions18_UltraLegacy_goldenJSON"
+        "2018"   : "Collisions18_UltraLegacy_goldenJSON",
+        "2024"   : "Collisions2023_369803_370790_eraD_GoldenJson"
     }
     evaluator = correctionlib.CorrectionSet.from_file(fname)
 
