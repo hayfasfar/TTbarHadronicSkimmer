@@ -27,8 +27,7 @@ python ttbaranalysis.py --iov 2024 --dataset ZPrime1
 
 For now the analysis can run on 2023 and 2024 datasets. JEC and JES has to be added. Please run with `--noSyst`.
 
-## Jupyter Lab (shell-independent)
-
+## Jupyter Lab 
 ```bash
 jupyter lab --no-browser --ip=127.0.0.1 --port=8883
 ```
