@@ -202,9 +202,9 @@ def GetJECUncertainties(FatJets, events, IOV, R='AK8', isData=False):
 
 
 
-    events_cache = events.caches[0]
+    #events_cache = events.caches[0]
     jet_factory = CorrectedJetsFactory(name_map, jec_stack)
-    corrected_jets = jet_factory.build(FatJets, lazy_cache=events_cache)
+    corrected_jets = jet_factory.build(FatJets)#, lazy_cache=events_cache)
 
     return corrected_jets
 

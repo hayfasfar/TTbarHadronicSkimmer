@@ -254,10 +254,13 @@ class TTbarResProcessor(processor.ProcessorABC):
 
         isData = ('data' in events.metadata['dataset']) or ('SingleMu' in events.metadata['dataset'])
         corrections = self.jet_manager.build_corrections(events, isData)
-        self.logger.debug(f'corrections {[label for _, label in corrections]}')
+        
         if corrections is None:
             print("Returning nominal")
             return self.process_analysis(events, 'nominal', nEvents)
+        else:
+            self.logger.debug(f'corrections {[label for _, label in corrections]}')
+
 
         # loop through corrections
         outputs = []
