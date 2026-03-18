@@ -9,7 +9,11 @@ from coffea.jetmet_tools import FactorizedJetCorrector, JetCorrectionUncertainty
 from coffea.jetmet_tools import JECStack, CorrectedJetsFactory
 from coffea.lookup_tools import extractor
 import copy
-    
+from pathlib import Path
+
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
 def GetFlavorEfficiency(Subjet, Flavor, bdisc): # Return "Flavor" efficiency numerator and denominator
     '''
     Subjet --> awkward array object after preselection i.e. SubJetXY
@@ -117,32 +121,31 @@ def GetJECUncertainties(FatJets, events, IOV, R='AK8', isData=False):
 
     ext = extractor()
     if not isData:
-    #For MC
-    
+        # For MC
         ext.add_weight_sets([
-            '* * data/corrections/JEC/{0}/{0}_L1FastJet_{1}PF{2}.jec.txt'.format(jec_tag, R, chspuppi),
-            '* * data/corrections/JEC/{0}/{0}_L2Relative_{1}PF{2}.jec.txt'.format(jec_tag, R, chspuppi),
-            '* * data/corrections/JEC/{0}/{0}_L3Absolute_{1}PF{2}.jec.txt'.format(jec_tag, R, chspuppi),
-            '* * data/corrections/JEC/{0}/{0}_UncertaintySources_{1}PF{2}.junc.txt'.format(jec_tag, R, chspuppi),
-            '* * data/corrections/JEC/{0}/{0}_Uncertainty_{1}PF{2}.junc.txt'.format(jec_tag, R, chspuppi),
+            '* * ' + str(_PROJECT_ROOT) + '/data/corrections/JEC/{0}/{0}_L1FastJet_{1}PF{2}.jec.txt'.format(jec_tag, R, chspuppi),
+            '* * ' + str(_PROJECT_ROOT) + '/data/corrections/JEC/{0}/{0}_L2Relative_{1}PF{2}.jec.txt'.format(jec_tag, R, chspuppi),
+            '* * ' + str(_PROJECT_ROOT) + '/data/corrections/JEC/{0}/{0}_L3Absolute_{1}PF{2}.jec.txt'.format(jec_tag, R, chspuppi),
+            '* * ' + str(_PROJECT_ROOT) + '/data/corrections/JEC/{0}/{0}_UncertaintySources_{1}PF{2}.junc.txt'.format(jec_tag, R, chspuppi),
+            '* * ' + str(_PROJECT_ROOT) + '/data/corrections/JEC/{0}/{0}_Uncertainty_{1}PF{2}.junc.txt'.format(jec_tag, R, chspuppi),
         ])
-
+    
         if jer_tag:
             ext.add_weight_sets([
-            '* * data/corrections/JER/{0}/{0}_PtResolution_{1}PF{2}.jr.txt'.format(jer_tag, R, chspuppi),
-            '* * data/corrections/JER/{0}/{0}_SF_{1}PF{2}.jersf.txt'.format(jer_tag, R, chspuppi)])
-
-
-    else:       
-        #For data, make sure we don't duplicat
+                '* * ' + str(_PROJECT_ROOT) + '/data/corrections/JER/{0}/{0}_PtResolution_{1}PF{2}.jr.txt'.format(jer_tag, R, chspuppi),
+                '* * ' + str(_PROJECT_ROOT) + '/data/corrections/JER/{0}/{0}_SF_{1}PF{2}.jersf.txt'.format(jer_tag, R, chspuppi),
+            ])
+    
+    else:
+        # For data, make sure we don't duplicate
         tags_done = []
         for run, tag in jec_tag_data.items():
-            if not (tag in tags_done):
+            if tag not in tags_done:
                 ext.add_weight_sets([
-                '* * data/corrections/JEC/{0}/{0}_L1FastJet_{1}PF{2}.jec.txt'.format(tag, R, chspuppi),
-                '* * data/corrections/JEC/{0}/{0}_L2Relative_{1}PF{2}.jec.txt'.format(tag, R, chspuppi),
-                '* * data/corrections/JEC/{0}/{0}_L3Absolute_{1}PF{2}.jec.txt'.format(tag, R, chspuppi),
-                '* * data/corrections/JEC/{0}/{0}_L2L3Residual_{1}PF{2}.jec.txt'.format(tag, R, chspuppi),
+                    '* * ' + str(_PROJECT_ROOT) + '/data/corrections/JEC/{0}/{0}_L1FastJet_{1}PF{2}.jec.txt'.format(tag, R, chspuppi),
+                    '* * ' + str(_PROJECT_ROOT) + '/data/corrections/JEC/{0}/{0}_L2Relative_{1}PF{2}.jec.txt'.format(tag, R, chspuppi),
+                    '* * ' + str(_PROJECT_ROOT) + '/data/corrections/JEC/{0}/{0}_L3Absolute_{1}PF{2}.jec.txt'.format(tag, R, chspuppi),
+                    '* * ' + str(_PROJECT_ROOT) + '/data/corrections/JEC/{0}/{0}_L2L3Residual_{1}PF{2}.jec.txt'.format(tag, R, chspuppi),
                 ])
                 tags_done += [tag]
 
@@ -243,10 +246,11 @@ def GetPDFWeights(events):
 def GetPUSF(events, IOV):
     # original code https://gitlab.cern.ch/gagarwal/ttbardileptonic/-/blob/master/TTbarDileptonProcessor.py#L38
     ## json files from: https://gitlab.cern.ch/cms-nanoAOD/jsonpog-integration/-/tree/master/POG/LUM
+    
     if IOV.endswith("UL"):
-        fname = "data/corrections/puWeights/{0}_UL/puWeights.json.gz".format(IOV)
+        fname = str(_PROJECT_ROOT)+"/data/corrections/puWeights/{0}_UL/puWeights.json.gz".format(IOV)
     elif IOV == "2024":
-        fname = "data/corrections/puWeights/2023_Summer23BPix/puWeights.json.gz"
+        fname = str(_PROJECT_ROOT)+"/data/corrections/puWeights/2023_Summer23BPix/puWeights.json.gz"
     hname = {
         "2016APV": "Collisions16_UltraLegacy_goldenJSON",
         "2016"   : "Collisions16_UltraLegacy_goldenJSON",
@@ -265,10 +269,10 @@ def GetPUSF(events, IOV):
 
 def getLumiMask(IOV):
 
-    golden_json_path_2022 = "data/corrections/goldenJsons/Cert_Collisions2022_355100_362760_Golden.json"
-    golden_json_path_2023 = "data/corrections/goldenJsons/Cert_Collisions2023_366442_370790_Golden.json"
-    golden_json_path_2024 = "data/corrections/goldenJsons/Cert_Collisions2024_378981_386951_Golden.json"
-    golden_json_path_2025 = "data/corrections/goldenJsons/Cert_Collisions2025_391658_398860_Golden.json"
+    golden_json_path_2022 = str(_PROJECT_ROOT)+"/data/corrections/goldenJsons/Cert_Collisions2022_355100_362760_Golden.json"
+    golden_json_path_2023 = str(_PROJECT_ROOT)+"/data/corrections/goldenJsons/Cert_Collisions2023_366442_370790_Golden.json"
+    golden_json_path_2024 = str(_PROJECT_ROOT)+"/data/corrections/goldenJsons/Cert_Collisions2024_378981_386951_Golden.json"
+    golden_json_path_2025 = str(_PROJECT_ROOT)+"/data/corrections/goldenJsons/Cert_Collisions2025_391658_398860_Golden.json"
     
 
     masks = {"2022":LumiMask(golden_json_path_2022),
