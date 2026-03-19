@@ -39,7 +39,7 @@ Setup lpcjobqueue by following instruction from [here](https://github.com/Coffea
 
 ### (optional) Jupyter Lab
 
-For interactive jupyter lab environment do - 
+For interactive jupyter lab environment run the following command inside the singularity container: 
 ```bash
 jupyter lab --no-browser --ip=127.0.0.1 --port=8XXX
 ```
@@ -48,18 +48,19 @@ Then copy the provided link to your browser.
 
 ## coffea.casa setup
 
-1. Go to [coffea.casa](https://coffea.casa).
-2. Log in using SSO or a CERN certificate.
-3. Select the latest coffea image for 2025.
-4. Start JupyterLab on coffea.casa and open this repository.
-5. In a terminal, run:
+Go to [coffea.casa](https://coffea.casa) and login using your preferred method.
 
+Select the latest coffea image for 2025 and press `Start`.
+![alt text](docs/image.png)
+
+Clone this repository:
 ```bash
-cd TTbarHadronicSkimmer
-voms-proxy-init --voms cms
+git clone -b coffea-2025 https://github.com/mandalaritra1/TTbarHadronicSkimmer.git
 ```
+Go to the `Dask` tab from left and click the *SHUTDOWN* button.
+![alt text](docs/image-1.png)
 
-6. Open [`ttbaranalysis.ipynb`](ttbaranalysis.ipynb) and run with the CASA configuration.
+Open [`ttbaranalysis.ipynb`](ttbaranalysis.ipynb) and run with the CASA configuration.
 
 ## Running Jobs
 
@@ -71,7 +72,7 @@ python ttbaranalysis.py --iov 2024 --dataset ZPrime1
 
 > **coffea.casa:** Use the CASA configuration in [`ttbaranalysis.ipynb`](ttbaranalysis.ipynb), or set `--env casa` when running from the command line.
 
-For now the analysis can run on 2023 and 2024 datasets. JEC and JES has to be added. Please run with `--noSyst`.
+For now the analysis can run on 2023 and 2024 datasets. 
 
 ## Viewing Histograms
 
