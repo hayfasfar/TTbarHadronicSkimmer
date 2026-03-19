@@ -58,6 +58,7 @@ Clone this repository:
 git clone -b coffea-2025 https://github.com/mandalaritra1/TTbarHadronicSkimmer.git
 ```
 Go to the `Dask` tab from left and click the *SHUTDOWN* button.
+
 ![alt text](docs/image-1.png)
 
 Open [`ttbaranalysis.ipynb`](ttbaranalysis.ipynb) and run with the CASA configuration.
