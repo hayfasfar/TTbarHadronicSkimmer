@@ -485,7 +485,7 @@ class TTbarResProcessor(processor.ProcessorABC):
         logger.debug('SortedFatJets:%s:jet1.pt:%s:%s', time.time(), jet1.pt, correction)
         '''
 
-        del FatJet_pt_argsort, SortedFatJets
+        #del FatJet_pt_argsort, SortedFatJets
 
         # signal = pass region for 2DAlphabet
         # both jets pass deepak8 tagger
@@ -536,6 +536,10 @@ class TTbarResProcessor(processor.ProcessorABC):
             output['cutflow']['dPhiCut'] += len(FatJets[(dPhiCut)])
             output['cutflow']['Good Subjets'] += len(FatJets[(dPhiCut & GoodSubjets)])
         ''' 
+
+        
+        
+
         ttbarcandCuts = (dPhiCut & GoodSubjets)
 
         #signal_region_cuts = (dPhiCut & GoodSubjets & ttag_s0 & ttag_s1 & mcut_s0 i)
@@ -545,6 +549,7 @@ class TTbarResProcessor(processor.ProcessorABC):
         jet0 = jet0[ttbarcandCuts]
         jet1 = jet1[ttbarcandCuts]
         FatJets = FatJets[ttbarcandCuts]
+        SortedFatJets = SortedFatJets[ttbarcandCuts]
         Jets = Jets[ttbarcandCuts]
         SubJets = SubJets[ttbarcandCuts]
         events = events[ttbarcandCuts]
@@ -552,6 +557,8 @@ class TTbarResProcessor(processor.ProcessorABC):
         run = run[ttbarcandCuts & ttag_s0_1 & ttag_s1_1]
         lumi = lumi[ttbarcandCuts  &  ttag_s0_1 & ttag_s1_1]
         evt = evt[ttbarcandCuts & ttag_s0_1 & ttag_s1_1]
+
+        
 
         if isNominal:
           before = len(output["event_list"]["run"])
@@ -571,8 +578,14 @@ class TTbarResProcessor(processor.ProcessorABC):
                               
         logger.debug('memory:%s: apply event cuts %s:%s', time.time(), correction, get_memory_usage())
 
-        
+        # Find if there is a third AK8 jet and find the delta_R between the third jet and the two leading jets
+        third_jet_mask = ak.num(FatJets) > 2
+        jet2 = FatJets[third_jet_mask][:,2]
+        dR_jet0_jet2 = jet0[third_jet_mask].p4.delta_r(jet2.p4)
+        dR_jet1_jet2 = jet1[third_jet_mask].p4.delta_r(jet2.p4)
         ttbarmass = (jet0.p4 + jet1.p4).mass 
+
+
         # ttbarmass
         #print ("ttbarmass" , ttbarmass) 
         # subjets
@@ -663,6 +676,20 @@ class TTbarResProcessor(processor.ProcessorABC):
             
             if isNominal:
                 output['cutflow'][ilabel] += len(events.event[icat])
+
+                dR_min_jet2 = ak.where(
+                    dR_jet0_jet2 < dR_jet1_jet2,
+                    dR_jet0_jet2,
+                    dR_jet1_jet2,
+                )
+
+                output['dR_min_jet2'].fill(
+                    systematic=correction,
+                    dr=dR_min_jet2,
+                    ttbarmass=ttbarmass[third_jet_mask],
+                    weight=self.weights[correction].weight()[third_jet_mask],
+                )
+
             output['jetmsd'].fill(
                                    systematic=correction,
                                    anacat = i,
