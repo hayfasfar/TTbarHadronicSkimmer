@@ -33,6 +33,8 @@ def build_output_histograms(anacats, systematics, no_syst):
     manual_axis = hist.axis.Variable(manual_bins, name="jetp", label=r"Jet Momentum [GeV]")
     jetdy_axis = hist.axis.Regular(50, -3, 3, name="jetdy", label=r"$\Delta y$")
     jetdr_axis = hist.axis.Regular(50, 0, 5, name="dr", label=r"$\Delta R$")
+    gentopmass_axis = hist.axis.Regular(100, 0, 500, name="mass", label=r"Gen top mass [GeV]")
+    massres_axis = hist.axis.Regular(80, -1.5, 1.5, name="massres", label=r"$(m_{reco}-m_{gen})/m_{gen}$")
 
     hist_tree = {
         "mass": {
@@ -53,6 +55,18 @@ def build_output_histograms(anacats, systematics, no_syst):
             "jetmass1": hist.Hist(syst_axis, cats_axis, jetmass2D_axis, storage="weight", name="Counts"),
             "jetmsd1": hist.Hist(syst_axis, cats_axis, jetmsd_axis, storage="weight", name="Counts"),
             "dR_min_jet2": hist.Hist(syst_axis, cats_axis, jetdr_axis, ttbarmass2D_axis, storage="weight", name="Counts"),
+        },
+        "truth": {
+            "gen_mt": hist.Hist(syst_axis, cats_axis, gentopmass_axis, storage="weight", name="Counts"),
+            "gen_mttbar": hist.Hist(syst_axis, cats_axis, ttbarmass2D_axis, storage="weight", name="Counts"),
+            "jet0_gen_dr": hist.Hist(syst_axis, cats_axis, jetdr_axis, storage="weight", name="Counts"),
+            "jet1_gen_dr": hist.Hist(syst_axis, cats_axis, jetdr_axis, storage="weight", name="Counts"),
+            "jet_mass_resolution": hist.Hist(
+                syst_axis, cats_axis, massres_axis, storage="weight", name="Counts"
+            ),
+            "gen_jetmsd_reco_jetmsd": hist.Hist(
+                syst_axis, cats_axis, gentopmass_axis, jetmass2D_axis, storage="weight", name="Counts"
+            ),
         },
         "event": {
             "ht": hist.Hist(syst_axis, cats_axis, ht_axis, storage="weight", name="Counts"),

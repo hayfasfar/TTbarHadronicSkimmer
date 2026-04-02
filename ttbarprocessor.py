@@ -42,7 +42,7 @@ from categories import build_analysis_categories
 from jets import Run3JetManager
 from hists import build_output_histograms
 from weights import Run3WeightManager
-from truthstudy import truthstudy_counts
+from truthstudy import truthstudy_counts, build_gen_top_match_info, build_top_aligned_genjetak8_match_info
 
 
 
@@ -256,16 +256,12 @@ class TTbarResProcessor(processor.ProcessorABC):
         corrections = self.jet_manager.build_corrections(events, isData)
         
         if corrections is None:
-            print("Returning nominal")
             return self.process_analysis(events, 'nominal', nEvents)
-        else:
-            self.logger.debug(f'corrections {[label for _, label in corrections]}')
 
 
         # loop through corrections
         outputs = []
         for collections, name in corrections:
-            print(f"Looping through {name}")
             outputs.append(self.process_analysis(update(events, collections), name, nEvents))
 
 
@@ -333,7 +329,7 @@ class TTbarResProcessor(processor.ProcessorABC):
 
 
         # objects #
-        FatJets, SubJets, Jets, GenJets = self.jet_manager.prepare_analysis_objects(events, isData)
+        FatJets, SubJets, Jets, GenJets, GenJetAK8, SubGenJetAK8 = self.jet_manager.prepare_analysis_objects(events, isData)
         #Met = events.MET
         run = events.run.to_numpy()
         lumi = events.luminosityBlock.to_numpy()
@@ -355,7 +351,7 @@ class TTbarResProcessor(processor.ProcessorABC):
         # ---- Get event weights from dataset ---- #
 
         # if blinding + trigger results in too few events
-        if (len(events) < 10): return output
+        if len(events) < 10: return output
         
 
                 
@@ -426,7 +422,12 @@ class TTbarResProcessor(processor.ProcessorABC):
         logger.debug(f"Length of event {len(events)}")
         if (len(events) < 10): return output
 
-        if not isData: GenJets = GenJets[eventCut]
+        if not isData:
+            GenJets = GenJets[eventCut]
+            if GenJetAK8 is not None:
+                GenJetAK8 = GenJetAK8[eventCut]
+            if SubGenJetAK8 is not None:
+                SubGenJetAK8 = SubGenJetAK8[eventCut]
             
         ##Add GenTruth study
         if isNominal and (not isData):
@@ -441,6 +442,8 @@ class TTbarResProcessor(processor.ProcessorABC):
             output["truthstudy"]["n_hadtop"] += truth_counts["n_hadtop"]
             output["truthstudy"]["n_hadtop_ak8"] += truth_counts["n_hadtop_ak8"]
             output["truthstudy"]["n_hadtop_ak8_ak4"] += truth_counts["n_hadtop_ak8_ak4"]
+
+        
   
 
     
@@ -574,7 +577,12 @@ class TTbarResProcessor(processor.ProcessorABC):
           print("duplicates:", df.duplicated(["run","lumi","event"]).sum())
        
 
-        if not isData: GenJets = GenJets[ttbarcandCuts]
+        if not isData:
+            GenJets = GenJets[ttbarcandCuts]
+            if GenJetAK8 is not None:
+                GenJetAK8 = GenJetAK8[ttbarcandCuts]
+            if SubGenJetAK8 is not None:
+                SubGenJetAK8 = SubGenJetAK8[ttbarcandCuts]
         del dPhiCut, ttbarcandCuts, hasSubjets0, hasSubjets1, GoodSubjets
                               
         logger.debug('memory:%s: apply event cuts %s:%s', time.time(), correction, get_memory_usage())
@@ -618,6 +626,33 @@ class TTbarResProcessor(processor.ProcessorABC):
         
         
         rapidity = getRapidity(jet0.p4) - getRapidity(jet1.p4)
+
+        gen_top_match_info = None
+        genjetak8_match_info = None
+        if isNominal and (not isData):
+            gen_top_match_info = build_gen_top_match_info(
+                genparts=events.GenPart,
+                jet0=jet0,
+                jet1=jet1,
+                dr_match=0.8,
+            )
+            genjetak8_match_info = build_top_aligned_genjetak8_match_info(
+                genparts=events.GenPart,
+                genjetak8=GenJetAK8,
+                subgenjetak8=SubGenJetAK8,
+                jet0=jet0,
+                jet1=jet1,
+                dr_match=0.8,
+                top_align_dr=0.8,
+            )
+            output["truthstudy"]["n_selected_allhad"] += int(ak.sum(gen_top_match_info["event_mask"]))
+            output["truthstudy"]["n_selected_jet0_matched"] += int(ak.sum(gen_top_match_info["jet0_is_matched"]))
+            output["truthstudy"]["n_selected_jet1_matched"] += int(ak.sum(gen_top_match_info["jet1_is_matched"]))
+            output["truthstudy"]["n_selected_both_matched"] += int(ak.sum(gen_top_match_info["both_jets_matched"]))
+            if genjetak8_match_info is not None:
+                output["truthstudy"]["n_selected_jet0_genak8_matched"] += int(ak.sum(genjetak8_match_info["jet0_is_matched"]))
+                output["truthstudy"]["n_selected_jet1_genak8_matched"] += int(ak.sum(genjetak8_match_info["jet1_is_matched"]))
+                output["truthstudy"]["n_selected_both_genak8_matched"] += int(ak.sum(genjetak8_match_info["both_jets_matched"]))
 
         labels_and_categories = build_analysis_categories(
             antitag=antitag,
@@ -703,6 +738,83 @@ class TTbarResProcessor(processor.ProcessorABC):
                                          ttbarmass = ttbarmass[icat],
                                          weight = self.weights[correction].weight()[icat],
                                         )
+
+            if gen_top_match_info is not None:
+                truth_cat_mask = icat[gen_top_match_info["event_mask"]]
+                truth_event_weights = self.weights[correction].weight()[gen_top_match_info["event_mask"]]
+                truth_weights = truth_event_weights[truth_cat_mask]
+
+                output["gen_mt"].fill(
+                    systematic=correction,
+                    anacat=i,
+                    mass=gen_top_match_info["gen_top0"].mass[truth_cat_mask],
+                    weight=truth_weights,
+                )
+                output["gen_mt"].fill(
+                    systematic=correction,
+                    anacat=i,
+                    mass=gen_top_match_info["gen_top1"].mass[truth_cat_mask],
+                    weight=truth_weights,
+                )
+                output["gen_mttbar"].fill(
+                    systematic=correction,
+                    anacat=i,
+                    ttbarmass=gen_top_match_info["top_pair_mass"][truth_cat_mask],
+                    weight=truth_weights,
+                )
+                output["jet0_gen_dr"].fill(
+                    systematic=correction,
+                    anacat=i,
+                    dr=gen_top_match_info["jet0_dr"][truth_cat_mask],
+                    weight=truth_weights,
+                )
+                output["jet1_gen_dr"].fill(
+                    systematic=correction,
+                    anacat=i,
+                    dr=gen_top_match_info["jet1_dr"][truth_cat_mask],
+                    weight=truth_weights,
+                )
+            if genjetak8_match_info is not None:
+                genak8_truth_cat_mask = icat[genjetak8_match_info["event_mask"]]
+                genak8_event_weights = self.weights[correction].weight()[genjetak8_match_info["event_mask"]]
+                genak8_truth_weights = genak8_event_weights[genak8_truth_cat_mask]
+
+                output["gen_jetmsd_reco_jetmsd"].fill(
+                    systematic=correction,
+                    anacat=i,
+                    mass=genjetak8_match_info["jet0_genjet"].mass[genak8_truth_cat_mask],
+                    jetmass=jetmsd[genjetak8_match_info["event_mask"]][genak8_truth_cat_mask],
+                    weight=genak8_truth_weights,
+                )
+                output["gen_jetmsd_reco_jetmsd"].fill(
+                    systematic=correction,
+                    anacat=i,
+                    mass=genjetak8_match_info["jet1_genjet"].mass[genak8_truth_cat_mask],
+                    jetmass=jetmsd1[genjetak8_match_info["event_mask"]][genak8_truth_cat_mask],
+                    weight=genak8_truth_weights,
+                )
+
+                jet0_genak8_massres = (
+                    jetmsd[genjetak8_match_info["event_mask"]] - genjetak8_match_info["jet0_genjet"].mass
+                ) / genjetak8_match_info["jet0_genjet"].mass
+                jet1_genak8_massres = (
+                    jetmsd1[genjetak8_match_info["event_mask"]] - genjetak8_match_info["jet1_genjet"].mass
+                ) / genjetak8_match_info["jet1_genjet"].mass
+                jet0_genak8_truth_cat_mask = genak8_truth_cat_mask & genjetak8_match_info["jet0_is_matched"]
+                jet1_genak8_truth_cat_mask = genak8_truth_cat_mask & genjetak8_match_info["jet1_is_matched"]
+
+                output["jet_mass_resolution"].fill(
+                    systematic=correction,
+                    anacat=i,
+                    massres=jet0_genak8_massres[jet0_genak8_truth_cat_mask],
+                    weight=genak8_event_weights[jet0_genak8_truth_cat_mask],
+                )
+                output["jet_mass_resolution"].fill(
+                    systematic=correction,
+                    anacat=i,
+                    massres=jet1_genak8_massres[jet1_genak8_truth_cat_mask],
+                    weight=genak8_event_weights[jet1_genak8_truth_cat_mask],
+                )
                
             '''
             output['jetdy'].fill(

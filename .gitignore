@@ -52,3 +52,5 @@ Untitled*.ipynb
 coffea_env/
 
 .last_config.json
+.codex
+CODEX.md

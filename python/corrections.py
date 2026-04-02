@@ -189,8 +189,9 @@ def GetJECUncertainties(FatJets, events, IOV, R='AK8', isData=False):
 
     FatJets['pt_raw'] = (1 - FatJets['rawFactor']) * FatJets['pt']
     FatJets['mass_raw'] = (1 - FatJets['rawFactor']) * FatJets['mass']
-    FatJets['rho'] = ak.broadcast_arrays(events.Rho.fixedGridRhoFastjetAll, FatJets.pt)[0]
-    FatJets['pt_gen'] = ak.values_astype(ak.fill_none(FatJets.matched_gen.pt, 0), np.float32)
+    FatJets['jec_rho'] = ak.broadcast_arrays(events.Rho.fixedGridRhoFastjetAll, FatJets.pt)[0]
+    if "pt_gen" not in FatJets.fields:
+        FatJets['pt_gen'] = ak.values_astype(ak.fill_none(FatJets.matched_gen.pt, 0), np.float32)
 
     name_map = jec_stack.blank_name_map
     name_map['JetPt'] = 'pt'
@@ -201,7 +202,7 @@ def GetJECUncertainties(FatJets, events, IOV, R='AK8', isData=False):
     name_map['ptGenJet'] = 'pt_gen'
     name_map['ptRaw'] = 'pt_raw'
     name_map['massRaw'] = 'mass_raw'
-    name_map['Rho'] = 'rho'
+    name_map['Rho'] = 'jec_rho'
 
 
 

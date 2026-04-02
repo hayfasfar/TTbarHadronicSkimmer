@@ -80,6 +80,166 @@ def get_hadronic_tops(genparts):
     return tops[hadronic]
 
 
+def _ensure_p4(collection):
+    
+    if collection is None or "p4" in collection.fields:
+        return collection
+    collection["p4"] = ak.with_name(collection[["pt", "eta", "phi", "mass"]], "PtEtaPhiMLorentzVector")
+    return collection
+
+
+
+def get_groomed_jet( jet, subjets , verbose = False):
+    '''
+    Find the subjets that correspond to the given jet using delta R matching. 
+    This is suboptimal, but it's hard to fix upstream. 
+    '''
+    #jet = _ensure_p4(jet)
+    #subjets = _ensure_p4(subjets)
+    if subjets is None:
+        return jet, None
+    combs = ak.cartesian( (jet, subjets), axis=1 )
+    dr_jet_subjets = combs['0'].delta_r(combs['1'])
+    sel = dr_jet_subjets < 0.8
+    total = combs[sel]['1'].sum(axis=1)
+    return total, sel
+
+def build_gen_top_match_info(genparts, jet0, jet1, dr_match=0.8):
+    tops = _ensure_p4(get_hadronic_tops(genparts))
+    jet0 = _ensure_p4(jet0)
+    jet1 = _ensure_p4(jet1)
+
+    has_two_had_tops = ak.num(tops, axis=1) == 2
+
+    tops = tops[has_two_had_tops]
+    jet0 = jet0[has_two_had_tops]
+    jet1 = jet1[has_two_had_tops]
+
+    if len(tops) == 0:
+        return {
+            "event_mask": has_two_had_tops,
+            "tops": tops,
+            "gen_top0": tops,
+            "gen_top1": tops,
+            "jet0_dr": ak.Array([]),
+            "jet1_dr": ak.Array([]),
+            "jet0_is_matched": ak.Array([]),
+            "jet1_is_matched": ak.Array([]),
+            "both_jets_matched": ak.Array([]),
+            "top_pair_mass": ak.Array([]),
+        }
+
+    top_order = ak.argsort(tops.pt, ascending=False)
+    tops = tops[top_order]
+    gen_top0 = tops[:, 0]
+    gen_top1 = tops[:, 1]
+
+    jet0_top_pairs = ak.cartesian({"jet": ak.singletons(jet0), "top": tops}, axis=1, nested=True)
+    jet1_top_pairs = ak.cartesian({"jet": ak.singletons(jet1), "top": tops}, axis=1, nested=True)
+
+    jet0_dr_all = jet0_top_pairs["jet"].p4.delta_r(jet0_top_pairs["top"].p4)
+    jet1_dr_all = jet1_top_pairs["jet"].p4.delta_r(jet1_top_pairs["top"].p4)
+
+    jet0_match_idx = ak.flatten(ak.argmin(jet0_dr_all, axis=2), axis=1)
+    jet1_match_idx = ak.flatten(ak.argmin(jet1_dr_all, axis=2), axis=1)
+    jet0_dr = ak.flatten(ak.min(jet0_dr_all, axis=2), axis=1)
+    jet1_dr = ak.flatten(ak.min(jet1_dr_all, axis=2), axis=1)
+    jet0_gen = tops[ak.singletons(jet0_match_idx)][:, 0]
+    jet1_gen = tops[ak.singletons(jet1_match_idx)][:, 0]
+
+    jet0_is_matched = jet0_dr < dr_match
+    jet1_is_matched = jet1_dr < dr_match
+
+    return {
+        "event_mask": has_two_had_tops,
+        "tops": tops,
+        "gen_top0": gen_top0,
+        "gen_top1": gen_top1,
+        "jet0_gen": jet0_gen,
+        "jet1_gen": jet1_gen,
+        "jet0_dr": jet0_dr,
+        "jet1_dr": jet1_dr,
+        "jet0_is_matched": jet0_is_matched,
+        "jet1_is_matched": jet1_is_matched,
+        "both_jets_matched": jet0_is_matched & jet1_is_matched,
+        "top_pair_mass": (gen_top0.p4 + gen_top1.p4).mass,
+    }
+
+
+def build_top_aligned_genjetak8_match_info(
+    genparts,
+    genjetak8,
+    subgenjetak8,
+    jet0,
+    jet1,
+    dr_match=0.8,
+    top_align_dr=0.8,
+):
+    if genjetak8 is None:
+        return None
+
+    tops = _ensure_p4(get_hadronic_tops(genparts))
+    genjetak8 = _ensure_p4(genjetak8)
+    subgenjetak8 = _ensure_p4(subgenjetak8)
+    jet0 = _ensure_p4(jet0)
+    jet1 = _ensure_p4(jet1)
+
+    has_two_had_tops = ak.num(tops, axis=1) == 2
+
+    tops = tops[has_two_had_tops]
+    genjetak8 = genjetak8[has_two_had_tops]
+    if subgenjetak8 is not None:
+        subgenjetak8 = subgenjetak8[has_two_had_tops]
+    jet0 = jet0[has_two_had_tops]
+    jet1 = jet1[has_two_had_tops]
+
+    if len(tops) == 0:
+        return None
+
+    top_order = ak.argsort(tops.pt, ascending=False)
+    tops = tops[top_order]
+
+    top_genjet_pairs = ak.cartesian({"top": tops, "genjet": genjetak8}, axis=1, nested=True)
+    dr_top_genjet = top_genjet_pairs["top"].p4.delta_r(top_genjet_pairs["genjet"].p4)
+
+    top_genjet_match_idx = ak.argmin(dr_top_genjet, axis=2)
+    top_genjet_dr = ak.fill_none(ak.min(dr_top_genjet, axis=2), 999.0)
+    top_has_genjet = top_genjet_dr < top_align_dr
+
+    aligned_genjet = genjetak8[top_genjet_match_idx]
+    aligned_genjet0, _ = get_groomed_jet(aligned_genjet[:, 0], subgenjetak8)
+    aligned_genjet1, _ = get_groomed_jet(aligned_genjet[:, 1], subgenjetak8)
+
+    jet0_top_pairs = ak.cartesian({"jet": ak.singletons(jet0), "top": tops}, axis=1, nested=True)
+    jet1_top_pairs = ak.cartesian({"jet": ak.singletons(jet1), "top": tops}, axis=1, nested=True)
+    jet0_dr_top = jet0_top_pairs["jet"].p4.delta_r(jet0_top_pairs["top"].p4)
+    jet1_dr_top = jet1_top_pairs["jet"].p4.delta_r(jet1_top_pairs["top"].p4)
+
+    jet0_top_idx = ak.flatten(ak.argmin(jet0_dr_top, axis=2), axis=1)
+    jet1_top_idx = ak.flatten(ak.argmin(jet1_dr_top, axis=2), axis=1)
+    jet0_top_dr = ak.flatten(ak.min(jet0_dr_top, axis=2), axis=1)
+    jet1_top_dr = ak.flatten(ak.min(jet1_dr_top, axis=2), axis=1)
+
+    jet0_genjet = ak.where(jet0_top_idx == 0, aligned_genjet0, aligned_genjet1)
+    jet1_genjet = ak.where(jet1_top_idx == 0, aligned_genjet0, aligned_genjet1)
+    jet0_top_has_genjet = top_has_genjet[ak.singletons(jet0_top_idx)][:, 0]
+    jet1_top_has_genjet = top_has_genjet[ak.singletons(jet1_top_idx)][:, 0]
+
+    jet0_is_matched = (jet0_top_dr < dr_match) & jet0_top_has_genjet
+    jet1_is_matched = (jet1_top_dr < dr_match) & jet1_top_has_genjet
+
+    return {
+        "event_mask": has_two_had_tops,
+        "jet0_genjet": jet0_genjet,
+        "jet1_genjet": jet1_genjet,
+        "jet0_dr_top": jet0_top_dr,
+        "jet1_dr_top": jet1_top_dr,
+        "jet0_is_matched": jet0_is_matched,
+        "jet1_is_matched": jet1_is_matched,
+        "both_jets_matched": jet0_is_matched & jet1_is_matched,
+    }
+
+
 def truthstudy_counts(genparts, fatjets, subJets, jets, dr_ak8=0.8, dr_ak4=1.2):
     tops = get_hadronic_tops(genparts)
     mask = (ak.num(tops, axis=1) == 2)
@@ -99,12 +259,9 @@ def truthstudy_counts(genparts, fatjets, subJets, jets, dr_ak8=0.8, dr_ak4=1.2):
     #build p4 if not present
     print("tops fileds are ", tops.fields)
     
-    if "p4" not in tops.fields:
-        tops["p4"] = ak.with_name(tops[["pt", "eta", "phi", "mass"]], "PtEtaPhiMLorentzVector")
-    if "p4" not in fatjets.fields:
-        fatjets["p4"] = ak.with_name(fatjets[["pt", "eta", "phi", "mass"]], "PtEtaPhiMLorentzVector")
-    if "p4" not in jets.fields:
-        jets["p4"] = ak.with_name(jets[["pt", "eta", "phi", "mass"]], "PtEtaPhiMLorentzVector")
+    tops = _ensure_p4(tops)
+    fatjets = _ensure_p4(fatjets)
+    jets = _ensure_p4(jets)
     
     #Match top to AK8 using cartesian pairing (Awkward-1 safe)
     top_fat_pairs = ak.cartesian({"top": tops, "fat": fatjets}, axis=1, nested=True)
@@ -130,15 +287,15 @@ def truthstudy_counts(genparts, fatjets, subJets, jets, dr_ak8=0.8, dr_ak4=1.2):
     ak4_outside_ak8 = dr_fat_ak4 > dr_ak8
     has_ak4_outside = ak.any(ak4_near_top & ak4_outside_ak8, axis=2)
     
-    btag_wp = 0.5  # à adapter selon CMS
+    btag_wp = 0.5  
     is_btag = (jets.btagDeepFlavB > btag_wp)
     has_btag_outside = ak.any(
     ak4_near_top & ak4_outside_ak8 & is_btag[:, None, :], axis=2)  # -> [evt, nTop]
     
-    print("number of TRUE AK8  jets:  ", int(ak.sum(ak.ones_like(has_ak8))), 
-           "number of MATCHED AK8 jets: ", int(ak.sum(has_ak8)), 
-           "number of AK4 close to AK8: ",  int(ak.sum(has_ak8 & has_ak4_outside)),
-            "number of AK8 + AK4(btag):", int(ak.sum(has_ak8 & has_btag_outside)))
+    print("number of TRUE AK8  jets:  ", int(ak.sum(ak.ones_like(has_ak8))))
+    print("number of MATCHED AK8 jets: ", int(ak.sum(has_ak8)))
+    print("number of AK4 close to AK8: ",  int(ak.sum(has_ak8 & has_ak4_outside)))
+    print("number of AK8 + AK4(btag):", int(ak.sum(has_ak8 & has_btag_outside)))
 
     evt_has_btag = ak.any(has_btag_outside, axis=1)   # [evt]
 

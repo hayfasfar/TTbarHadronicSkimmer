@@ -69,9 +69,15 @@ class Run3JetManager:
         subjets = self._add_p4(events.SubJet)
         jets = self._add_p4(events.Jet)
         genjets = None
+        genjetak8 = None
+        subgenjetak8 = None
         if not is_data:
             genjets = self._add_p4(events.GenJet)
-        return fatjets, subjets, jets, genjets
+            if "GenJetAK8" in events.fields:
+                genjetak8 = self._add_p4(events.GenJetAK8)
+            if "SubGenJetAK8" in events.fields:
+                subgenjetak8 = self._add_p4(events.SubGenJetAK8)
+        return fatjets, subjets, jets, genjets, genjetak8, subgenjetak8
 
     def baseline_masks(self, events, fatjets, jets):
         ht_mask = ak.sum(jets[(jets.pt > 30) & (np.abs(jets.eta) < 3.0)].pt, axis=1) > self.ht_cut
