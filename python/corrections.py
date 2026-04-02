@@ -113,7 +113,7 @@ def GetJECUncertainties(FatJets, events, IOV, R='AK8', isData=False):
 
         jec_tag_data= {}
 
-        #jer_tag = "Summer23BPixPrompt23_RunD_JRV1_MC"
+        jer_tag = "Summer23BPixPrompt23RunD_JRV1_MC"
     else:
         raise ValueError(f"Error: Unknown year \"{IOV}\".")
 
@@ -171,6 +171,8 @@ def GetJECUncertainties(FatJets, events, IOV, R='AK8', isData=False):
                 '{0}_L3Absolute_{1}PF{2}'.format(tag, R, chspuppi),
                 '{0}_L2Relative_{1}PF{2}'.format(tag, R, chspuppi),
                 '{0}_L2L3Residual_{1}PF{2}'.format(tag, R, chspuppi),]
+    #typelist = [t for type(evaluator[name]) for name in jec_names]
+    #print("Typelist ", typelist)
 
     if not isData:
         jec_inputs = {name: evaluator[name] for name in jec_names}
@@ -182,12 +184,13 @@ def GetJECUncertainties(FatJets, events, IOV, R='AK8', isData=False):
             jec_names_data += jec_names[f'Run{era}']
 
         jec_inputs = {name: evaluator[name] for name in jec_names_data}
-
+    #print("jec_inputs: ", jec_inputs)
     jec_stack = JECStack(jec_inputs)
 
     FatJets['pt_raw'] = (1 - FatJets['rawFactor']) * FatJets['pt']
     FatJets['mass_raw'] = (1 - FatJets['rawFactor']) * FatJets['mass']
     FatJets['rho'] = ak.broadcast_arrays(events.Rho.fixedGridRhoFastjetAll, FatJets.pt)[0]
+    FatJets['pt_gen'] = ak.values_astype(ak.fill_none(FatJets.matched_gen.pt, 0), np.float32)
 
     name_map = jec_stack.blank_name_map
     name_map['JetPt'] = 'pt'

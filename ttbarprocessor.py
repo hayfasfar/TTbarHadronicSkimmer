@@ -423,6 +423,7 @@ class TTbarResProcessor(processor.ProcessorABC):
         lumi = lumi[eventCut]
         evt = evt[eventCut]
         # if event cut results in few events
+        logger.debug(f"Length of event {len(events)}")
         if (len(events) < 10): return output
 
         if not isData: GenJets = GenJets[eventCut]
@@ -687,6 +688,7 @@ class TTbarResProcessor(processor.ProcessorABC):
                     systematic=correction,
                     dr=dR_min_jet2,
                     ttbarmass=ttbarmass[third_jet_mask],
+                    anacat = i,
                     weight=self.weights[correction].weight()[third_jet_mask],
                 )
 
