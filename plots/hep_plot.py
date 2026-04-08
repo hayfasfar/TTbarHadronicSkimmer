@@ -153,6 +153,40 @@ def savefig(*args, **kwargs) -> None:
     save(*args, **kwargs)
 
 
+def plot1dList(output, hname, axes, labels=None, density=False, ax=None, dataset = None, **kwargs):
+    """
+    Plot multiple 1D projections from a 2D histogram overlaid on the same axes.
+
+    Parameters
+    ----------
+    output  : dict-like, the histogram output dictionary
+    hname   : str, key in output to select the histogram
+    axes    : list of str, axis names to project and overlay
+    labels  : list of str, optional labels (defaults to axis names)
+    density : bool, normalize to unit area if True
+    ax      : matplotlib Axes, optional (creates one if not provided)
+    **kwargs: passed to plot1d()
+    """
+    if labels is None:
+        labels = axes
+
+    if len(labels) != len(axes):
+        raise ValueError(f"len(axes)={len(axes)} and len(labels)={len(labels)} must match")
+
+    if ax is None:
+        _, ax = plt.subplots()
+
+    h2d = output[hname]['nominal', ...].project(*axes)
+
+    for axis, label in zip(axes, labels):
+        h2d.project(axis).plot1d(ax=ax, label=label, density=density, **kwargs)
+    
+    if dataset is not None:
+        ax.legend(title = dataset, title_fontproperties={'style': 'italic'})
+    else:
+        ax.legend()
+    return ax
+    
 def quick_label(
     xlabel: Optional[str] = None,
     ylabel: Optional[str] = None,
@@ -181,8 +215,8 @@ def quick_label(
     if title is not None:
         ax.set_title(title)
     
-
-
+    ax.ticklabel_format(style="sci", scilimits=(-3, 3), useMathText=True)
+    ax.get_yaxis().get_offset_text().set_position((-0.085, 1.05))
     # If lumi not given, determine from ERA
     if lumi is None:
         era_key = str(ERA).replace("UL", "")  # allow UL2018, etc.
@@ -224,3 +258,4 @@ def _clear_plot_name() -> None:
 def _ensure_setup() -> None:
     if not _INITIALIZED:
         setup()
+    
