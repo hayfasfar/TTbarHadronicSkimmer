@@ -74,14 +74,7 @@ def get_memory_usage(human_readable=True, precision=2):
         unit_index += 1
 
     return f"{size:.{precision}f} {units[unit_index]}"
-# ...existing code...
-# def get_memory_usage():
-#     process = psutil.Process(os.getpid())
-#     memory_info = process.memory_info()
-#     memory_usage_bytes = memory_info.rss
-#     memory_usage_mb = memory_usage_bytes / (1024 * 1024)
 
-#     return memory_usage_mb
 
 class Logger:
     DEBUG = 10
@@ -626,6 +619,51 @@ class TTbarResProcessor(processor.ProcessorABC):
         
         
         rapidity = getRapidity(jet0.p4) - getRapidity(jet1.p4)
+        jet0_abs_eta = np.abs(jet0.eta)
+        jet1_abs_eta = np.abs(jet1.eta)
+
+        jet0_ak4_pairs = ak.cartesian({"ak8": ak.singletons(jet0), "ak4": Jets}, axis=1, nested=True)
+        jet1_ak4_pairs = ak.cartesian({"ak8": ak.singletons(jet1), "ak4": Jets}, axis=1, nested=True)
+        jet0_ak8_pairs = ak.cartesian({"ak8": ak.singletons(jet0), "fat": FatJets}, axis=1, nested=True)
+        jet1_ak8_pairs = ak.cartesian({"ak8": ak.singletons(jet1), "fat": FatJets}, axis=1, nested=True)
+        jet0_ak4_dr = jet0_ak4_pairs["ak8"].p4.delta_r(jet0_ak4_pairs["ak4"].p4)
+        jet1_ak4_dr = jet1_ak4_pairs["ak8"].p4.delta_r(jet1_ak4_pairs["ak4"].p4)
+        jet0_ak8_dr = jet0_ak8_pairs["ak8"].p4.delta_r(jet0_ak8_pairs["fat"].p4)
+        jet1_ak8_dr = jet1_ak8_pairs["ak8"].p4.delta_r(jet1_ak8_pairs["fat"].p4)
+        jet0_has_nearby_ak4 = ak.to_numpy(
+            ak.flatten(ak.any((jet0_ak4_dr > 0.4) & (jet0_ak4_dr < 0.8), axis=2), axis=1)
+        )
+        jet1_has_nearby_ak4 = ak.to_numpy(
+            ak.flatten(ak.any((jet1_ak4_dr > 0.4) & (jet1_ak4_dr < 0.8), axis=2), axis=1)
+        )
+        jet0_has_nearby_ak8 = ak.to_numpy(
+            ak.flatten(
+                ak.any(
+                    (jet0_ak8_dr < 0.8) & (jet0_ak8_dr > 1e-6),
+                    axis=2,
+                ),
+                axis=1,
+            )
+        )
+        jet1_has_nearby_ak8 = ak.to_numpy(
+            ak.flatten(
+                ak.any(
+                    (jet1_ak8_dr < 0.8) & (jet1_ak8_dr > 1e-6),
+                    axis=2,
+                ),
+                axis=1,
+            )
+        )
+        jet0_nearby_label = np.where(
+            jet0_has_nearby_ak4,
+            "ak4_nearby",
+            np.where(jet0_has_nearby_ak8, "ak8_nearby", "no_jet_nearby"),
+        )
+        jet1_nearby_label = np.where(
+            jet1_has_nearby_ak4,
+            "ak4_nearby",
+            np.where(jet1_has_nearby_ak8, "ak8_nearby", "no_jet_nearby"),
+        )
 
         gen_top_match_info = None
         genjetak8_match_info = None
@@ -730,7 +768,7 @@ class TTbarResProcessor(processor.ProcessorABC):
             output['jetmsd'].fill(
                                    systematic=correction,
                                    anacat = i,
-                                   jetmass = jetmsd[icat],
+                                   jetmsd = jetmsd[icat],
                                    weight = self.weights[correction].weight()[icat],
                                   )
             output['ttbarmass'].fill(systematic=correction,
@@ -747,13 +785,13 @@ class TTbarResProcessor(processor.ProcessorABC):
                 output["gen_mt"].fill(
                     systematic=correction,
                     anacat=i,
-                    mass=gen_top_match_info["gen_top0"].mass[truth_cat_mask],
+                    gentopmass=gen_top_match_info["gen_top0"].mass[truth_cat_mask],
                     weight=truth_weights,
                 )
                 output["gen_mt"].fill(
                     systematic=correction,
                     anacat=i,
-                    mass=gen_top_match_info["gen_top1"].mass[truth_cat_mask],
+                    gentopmass=gen_top_match_info["gen_top1"].mass[truth_cat_mask],
                     weight=truth_weights,
                 )
                 output["gen_mttbar"].fill(
@@ -779,18 +817,23 @@ class TTbarResProcessor(processor.ProcessorABC):
                 genak8_event_weights = self.weights[correction].weight()[genjetak8_match_info["event_mask"]]
                 genak8_truth_weights = genak8_event_weights[genak8_truth_cat_mask]
 
+                # Fill response for each top-aligned AK8: jet0->jetmsd and jet1->jetmsd1.
                 output["gen_jetmsd_reco_jetmsd"].fill(
                     systematic=correction,
                     anacat=i,
-                    mass=genjetak8_match_info["jet0_genjet"].mass[genak8_truth_cat_mask],
-                    jetmass=jetmsd[genjetak8_match_info["event_mask"]][genak8_truth_cat_mask],
+                    abs_eta=jet0_abs_eta[genjetak8_match_info["event_mask"]][genak8_truth_cat_mask],
+                    jet_nearby=jet0_nearby_label[genjetak8_match_info["event_mask"]][genak8_truth_cat_mask],
+                    genjetmass=genjetak8_match_info["jet0_genjet"].mass[genak8_truth_cat_mask],
+                    jetmsd=jetmsd[genjetak8_match_info["event_mask"]][genak8_truth_cat_mask],
                     weight=genak8_truth_weights,
                 )
                 output["gen_jetmsd_reco_jetmsd"].fill(
                     systematic=correction,
                     anacat=i,
-                    mass=genjetak8_match_info["jet1_genjet"].mass[genak8_truth_cat_mask],
-                    jetmass=jetmsd1[genjetak8_match_info["event_mask"]][genak8_truth_cat_mask],
+                    abs_eta=jet1_abs_eta[genjetak8_match_info["event_mask"]][genak8_truth_cat_mask],
+                    jet_nearby=jet1_nearby_label[genjetak8_match_info["event_mask"]][genak8_truth_cat_mask],
+                    genjetmass=genjetak8_match_info["jet1_genjet"].mass[genak8_truth_cat_mask],
+                    jetmsd=jetmsd1[genjetak8_match_info["event_mask"]][genak8_truth_cat_mask],
                     weight=genak8_truth_weights,
                 )
 
@@ -806,12 +849,16 @@ class TTbarResProcessor(processor.ProcessorABC):
                 output["jet_mass_resolution"].fill(
                     systematic=correction,
                     anacat=i,
+                    abs_eta=jet0_abs_eta[genjetak8_match_info["event_mask"]][jet0_genak8_truth_cat_mask],
+                    jet_nearby=jet0_nearby_label[genjetak8_match_info["event_mask"]][jet0_genak8_truth_cat_mask],
                     massres=jet0_genak8_massres[jet0_genak8_truth_cat_mask],
                     weight=genak8_event_weights[jet0_genak8_truth_cat_mask],
                 )
                 output["jet_mass_resolution"].fill(
                     systematic=correction,
                     anacat=i,
+                    abs_eta=jet1_abs_eta[genjetak8_match_info["event_mask"]][jet1_genak8_truth_cat_mask],
+                    jet_nearby=jet1_nearby_label[genjetak8_match_info["event_mask"]][jet1_genak8_truth_cat_mask],
                     massres=jet1_genak8_massres[jet1_genak8_truth_cat_mask],
                     weight=genak8_event_weights[jet1_genak8_truth_cat_mask],
                 )
@@ -833,7 +880,7 @@ class TTbarResProcessor(processor.ProcessorABC):
             output['jetmsd'].fill(
                                    systematic=correction,
                                    anacat = i,
-                                   jetmass = jetmsd[icat],
+                                   jetmsd = jetmsd[icat],
                                    weight = self.weights[correction].weight()[icat],
                                   )
             output['jetmass1'].fill(
@@ -889,7 +936,7 @@ class TTbarResProcessor(processor.ProcessorABC):
                     output['jetmsd'].fill(
                                 systematic=syst,
                                 anacat = i,
-                                jetmass = jetmsd[icat],
+                                jetmsd = jetmsd[icat],
                                 weight = self.weights[correction].weight(syst)[icat],
                                 )
                     output['ttbarmass'].fill(
@@ -918,7 +965,7 @@ class TTbarResProcessor(processor.ProcessorABC):
                     output['jetmsd'].fill(
                                            systematic=syst,
                                            anacat = i,
-                                           jetmass = jetmsd[icat],
+                                           jetmsd = jetmsd[icat],
                                            weight = self.weights[correction].weight(syst)[icat],
                                           )
                     output['jetmass1'].fill(
