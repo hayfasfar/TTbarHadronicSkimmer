@@ -258,7 +258,7 @@ class TTbarResProcessor(processor.ProcessorABC):
             outputs.append(self.process_analysis(update(events, collections), name, nEvents))
 
 
-        return outputs[0]
+        return processor.accumulate(outputs)
      
 
 
@@ -472,6 +472,7 @@ class TTbarResProcessor(processor.ProcessorABC):
               )
         mcut_s0 = ((self.minMSD < jet0.msoftdrop) & (jet0.msoftdrop < self.maxMSD) )
         mcut_s1 = ((self.minMSD < jet1.msoftdrop) & (jet1.msoftdrop < self.maxMSD) )
+        del FatJet_pt_argsort, SortedFatJets
 
 
         '''
@@ -546,7 +547,6 @@ class TTbarResProcessor(processor.ProcessorABC):
         jet0 = jet0[ttbarcandCuts]
         jet1 = jet1[ttbarcandCuts]
         FatJets = FatJets[ttbarcandCuts]
-        SortedFatJets = SortedFatJets[ttbarcandCuts]
         Jets = Jets[ttbarcandCuts]
         SubJets = SubJets[ttbarcandCuts]
         events = events[ttbarcandCuts]
@@ -563,11 +563,12 @@ class TTbarResProcessor(processor.ProcessorABC):
           output["event_list"]["run"]   += list(run)
           output["event_list"]["lumi"]   += list(lumi)
           output["event_list"]["event"]   += list(evt)
-          after = len(output["event_list"]["run"])
-          print(after - before,  len(run), "   if different then is wrong")
-          df = pd.DataFrame(output["event_list"])
-          print("rows:", len(df))
-          print("duplicates:", df.duplicated(["run","lumi","event"]).sum())
+          if self.debug:
+              after = len(output["event_list"]["run"])
+              print(after - before,  len(run), "   if different then is wrong")
+              df = pd.DataFrame(output["event_list"])
+              print("rows:", len(df))
+              print("duplicates:", df.duplicated(["run","lumi","event"]).sum())
        
 
         if not isData:
@@ -589,12 +590,7 @@ class TTbarResProcessor(processor.ProcessorABC):
 
 
         # ttbarmass
-        #print ("ttbarmass" , ttbarmass) 
-        # subjets
-        SubJet00 = ak.flatten(SubJets[ak.unflatten(jet0.subJetIdx1, np.ones(len(FatJets), dtype='i'))])
-        SubJet01 = ak.flatten(SubJets[ak.unflatten(jet0.subJetIdx2, np.ones(len(FatJets), dtype='i'))])
-        SubJet10 = ak.flatten(SubJets[ak.unflatten(jet1.subJetIdx1, np.ones(len(FatJets), dtype='i'))])
-        SubJet11 = ak.flatten(SubJets[ak.unflatten(jet1.subJetIdx2, np.ones(len(FatJets), dtype='i'))])
+        #print ("ttbarmass" , ttbarmass)
 
 
         
@@ -623,19 +619,21 @@ class TTbarResProcessor(processor.ProcessorABC):
         jet1_abs_eta = np.abs(jet1.eta)
 
         jet0_ak4_pairs = ak.cartesian({"ak8": ak.singletons(jet0), "ak4": Jets}, axis=1, nested=True)
-        jet1_ak4_pairs = ak.cartesian({"ak8": ak.singletons(jet1), "ak4": Jets}, axis=1, nested=True)
-        jet0_ak8_pairs = ak.cartesian({"ak8": ak.singletons(jet0), "fat": FatJets}, axis=1, nested=True)
-        jet1_ak8_pairs = ak.cartesian({"ak8": ak.singletons(jet1), "fat": FatJets}, axis=1, nested=True)
         jet0_ak4_dr = jet0_ak4_pairs["ak8"].p4.delta_r(jet0_ak4_pairs["ak4"].p4)
-        jet1_ak4_dr = jet1_ak4_pairs["ak8"].p4.delta_r(jet1_ak4_pairs["ak4"].p4)
-        jet0_ak8_dr = jet0_ak8_pairs["ak8"].p4.delta_r(jet0_ak8_pairs["fat"].p4)
-        jet1_ak8_dr = jet1_ak8_pairs["ak8"].p4.delta_r(jet1_ak8_pairs["fat"].p4)
         jet0_has_nearby_ak4 = ak.to_numpy(
             ak.flatten(ak.any((jet0_ak4_dr > 0.4) & (jet0_ak4_dr < 0.8), axis=2), axis=1)
         )
+        del jet0_ak4_pairs, jet0_ak4_dr
+
+        jet1_ak4_pairs = ak.cartesian({"ak8": ak.singletons(jet1), "ak4": Jets}, axis=1, nested=True)
+        jet1_ak4_dr = jet1_ak4_pairs["ak8"].p4.delta_r(jet1_ak4_pairs["ak4"].p4)
         jet1_has_nearby_ak4 = ak.to_numpy(
             ak.flatten(ak.any((jet1_ak4_dr > 0.4) & (jet1_ak4_dr < 0.8), axis=2), axis=1)
         )
+        del jet1_ak4_pairs, jet1_ak4_dr
+
+        jet0_ak8_pairs = ak.cartesian({"ak8": ak.singletons(jet0), "fat": FatJets}, axis=1, nested=True)
+        jet0_ak8_dr = jet0_ak8_pairs["ak8"].p4.delta_r(jet0_ak8_pairs["fat"].p4)
         jet0_has_nearby_ak8 = ak.to_numpy(
             ak.flatten(
                 ak.any(
@@ -645,6 +643,10 @@ class TTbarResProcessor(processor.ProcessorABC):
                 axis=1,
             )
         )
+        del jet0_ak8_pairs, jet0_ak8_dr
+
+        jet1_ak8_pairs = ak.cartesian({"ak8": ak.singletons(jet1), "fat": FatJets}, axis=1, nested=True)
+        jet1_ak8_dr = jet1_ak8_pairs["ak8"].p4.delta_r(jet1_ak8_pairs["fat"].p4)
         jet1_has_nearby_ak8 = ak.to_numpy(
             ak.flatten(
                 ak.any(
@@ -654,6 +656,7 @@ class TTbarResProcessor(processor.ProcessorABC):
                 axis=1,
             )
         )
+        del jet1_ak8_pairs, jet1_ak8_dr
         jet0_nearby_label = np.where(
             jet0_has_nearby_ak4,
             "ak4_nearby",
@@ -1007,13 +1010,7 @@ class TTbarResProcessor(processor.ProcessorABC):
                     
                     
         logger.debug('memory:%s: fill histograms %s:%s', time.time(), correction, get_memory_usage())
-                    
-                    
-                    
-                    
-
-
-        
+        del self.weights[correction]
 
         return output
 

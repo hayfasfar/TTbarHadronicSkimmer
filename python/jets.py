@@ -29,8 +29,8 @@ class Run3JetManager:
 
         if not is_data:
             genjets = self._add_p4(events.GenJet)
-            fatjets["matched_gen_0p2"] = fatjets.p4.nearest(genjets.p4, threshold=0.2)
-            fatjets["pt_gen"] = ak.values_astype(ak.fill_none(fatjets.matched_gen_0p2.pt, 0), np.float32)
+            _matched_gen = fatjets.p4.nearest(genjets.p4, threshold=0.2)
+            fatjets["pt_gen"] = ak.values_astype(ak.fill_none(_matched_gen.pt, 0), np.float32)
 
         return fatjets, jets
 
