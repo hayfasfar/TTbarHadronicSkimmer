@@ -194,11 +194,25 @@ class TTbarResProcessor(processor.ProcessorABC):
              self.deepAK8low = deepak8cuts['loose'][self.iov]
         else:
             self.deepAK8low = 0.2
-        
-        
-        
-        
-        
+
+        # tagger discriminant field name, IOV-dependent
+        _tagger_fields = {
+            '2023': 'particleNet_XttVsQCD',
+            '2024': 'globalParT3_TopbWqq',
+        }
+        self.tagger_field = _tagger_fields.get(self.iov)
+
+        # trigger paths per IOV (all Run-3 IOVs use PFHT1050)
+        self.triggernames = {
+            '2022': ['PFHT1050'],
+            '2023': ['PFHT1050'],
+            '2024': ['PFHT1050'],
+            '2025': ['PFHT1050'],
+        }
+
+
+
+
         # analysis categories #
         self.anacats = anacats
         self.label_dict = {i: label for i, label in enumerate(self.anacats)}
@@ -249,7 +263,7 @@ class TTbarResProcessor(processor.ProcessorABC):
         corrections = self.jet_manager.build_corrections(events, isData)
         
         if corrections is None:
-            return self.process_analysis(events, 'nominal', nEvents)
+            return processor.accumulate([self.process_analysis(events, 'nominal', nEvents)])
 
 
         # loop through corrections
@@ -258,7 +272,7 @@ class TTbarResProcessor(processor.ProcessorABC):
             outputs.append(self.process_analysis(update(events, collections), name, nEvents))
 
 
-        return processor.accumulate(outputs)
+        return outputs[0]
      
 
 
@@ -274,7 +288,7 @@ class TTbarResProcessor(processor.ProcessorABC):
         isNominal = (correction=='nominal')
         isData = ('data' in dataset) or ('SingleMu' in dataset)
     
-        output = self.histo_dict 
+        output = self.histo_dict  # histograms are accumulated in-place on self.histo_dict
         
         if isNominal:
             output['cutflow']['all events 1'] += nEvents
@@ -300,25 +314,10 @@ class TTbarResProcessor(processor.ProcessorABC):
         selection = PackedSelection()
 
         # trigger cut #
-
-        triggernames = { 
-
-        "2022": ["PFHT1050"],
-        "2023" :   ["PFHT1050"],
-        "2024" :   ["PFHT1050"],
-        "2025" :   ["PFHT1050"],
-
-        }
-        '''
-        if "HLT" in events.fields:
-         print("HLT paths in this file:")
-         for hlt_name in events.HLT.fields:
-            print(hlt_name)
-        '''
         try:
-            selection.add('trigger', (events.HLT[triggernames[self.iov][0]] | events.HLT[triggernames[self.iov][1]]) )
+            selection.add('trigger', (events.HLT[self.triggernames[self.iov][0]] | events.HLT[self.triggernames[self.iov][1]]))
         except:
-            selection.add('trigger', (events.HLT[triggernames[self.iov][0]]))
+            selection.add('trigger', (events.HLT[self.triggernames[self.iov][0]]))
 
 
         # objects #
@@ -442,34 +441,13 @@ class TTbarResProcessor(processor.ProcessorABC):
     
         #logger.debug('JEC:%s:ttbar cand JES:%s:%s', time.time(), FatJets.pt, correction)    
 
-        # sort jets by pt to select two leading jets
-       
-        FatJet_pt_argsort = ak.argsort(FatJets.pt, ascending=False) 
+        # sort jets by pt, then re-order so jet0 has the higher tagger score
+        FatJet_pt_argsort = ak.argsort(FatJets.pt, ascending=False)
         SortedFatJets = FatJets[FatJet_pt_argsort]
-        
-        # higher deepak8 discriminator will be used for jet in mt of mt vs mtt distribution
-        if (self.iov == '2023'):
-            jet0 = ak.where(SortedFatJets[:,0].particleNet_XttVsQCD > SortedFatJets[:,1].particleNet_XttVsQCD,
-                            SortedFatJets[:,0],
-                            SortedFatJets[:,1]
-                                   )
-            
-            jet1 = ak.where(SortedFatJets[:,0].particleNet_XttVsQCD > SortedFatJets[:,1].particleNet_XttVsQCD,
-                            SortedFatJets[:,1],
-                            SortedFatJets[:,0]
-                                )
-        elif (self.iov == '2024'):
 
-              jet0 = ak.where(SortedFatJets[:,0].globalParT3_TopbWqq > SortedFatJets[:,1].globalParT3_TopbWqq,
-                            SortedFatJets[:,0],
-                            SortedFatJets[:,1]
-               )
-            
-              jet1 = ak.where(SortedFatJets[:,0].globalParT3_TopbWqq > SortedFatJets[:,1].globalParT3_TopbWqq,
-                            SortedFatJets[:,1],
-                            SortedFatJets[:,0]
-
-              )
+        lead_score_higher = SortedFatJets[:, 0][self.tagger_field] > SortedFatJets[:, 1][self.tagger_field]
+        jet0 = ak.where(lead_score_higher, SortedFatJets[:, 0], SortedFatJets[:, 1])
+        jet1 = ak.where(lead_score_higher, SortedFatJets[:, 1], SortedFatJets[:, 0])
         mcut_s0 = ((self.minMSD < jet0.msoftdrop) & (jet0.msoftdrop < self.maxMSD) )
         mcut_s1 = ((self.minMSD < jet1.msoftdrop) & (jet1.msoftdrop < self.maxMSD) )
         del FatJet_pt_argsort, SortedFatJets
@@ -485,38 +463,21 @@ class TTbarResProcessor(processor.ProcessorABC):
 
         #del FatJet_pt_argsort, SortedFatJets
 
-        # signal = pass region for 2DAlphabet
-        # both jets pass deepak8 tagger
-        if (self.iov == '2023'):
-        
-            ttag_s0 = (jet0.particleNet_XttVsQCD > self.deepAK8disc)
-            ttag_s1 = (jet1.particleNet_XttVsQCD > self.deepAK8disc) & (mcut_s1)
-            ttag_s0_1 = (jet0.particleNet_XttVsQCD > self.deepAK8disc)
-            ttag_s1_1 = (jet1.particleNet_XttVsQCD > self.deepAK8disc) & (mcut_s1)
-            
-            # antitag = fail region for 2DAlphabet
-            # leading (in deepak8 disc) jet passes deepak8 tagger
-            # subleading (in deepak8 disc) jet fails deepak8 tagger         
-            antitag_disc = ((jet1.particleNet_XttVsQCD < self.deepAK8disc) & (jet1.particleNet_XttVsQCD > self.deepAK8low))
-            
-        elif (self.iov == '2024'):
-             
-            ttag_s0 = (jet0.globalParT3_TopbWqq > self.deepAK8disc)
-            ttag_s1 = (jet1.globalParT3_TopbWqq > self.deepAK8disc) & (mcut_s1)
-            ttag_s0_1 = (jet0.globalParT3_TopbWqq > self.deepAK8disc)
-            ttag_s1_1 = (jet1.globalParT3_TopbWqq > self.deepAK8disc) & (mcut_s1)
-            
-            # antitag = fail region for 2DAlphabet
-            # leading (in deepak8 disc) jet passes deepak8 tagger
-            # subleading (in deepak8 disc) jet fails deepak8 tagger         
-            antitag_disc = ((jet1.globalParT3_TopbWqq < self.deepAK8disc) & (jet1.globalParT3_TopbWqq > self.deepAK8low))
-        
-            antitag = (antitag_disc) & (ttag_s0) & (mcut_s1)
+        # signal = pass region for 2DAlphabet: both jets pass deepak8 tagger
+        # jet0 = leading in tagger score, jet1 = subleading
+        ttag_s0 = (jet0[self.tagger_field] > self.deepAK8disc)
+        ttag_s1 = (jet1[self.tagger_field] > self.deepAK8disc) & mcut_s1
+        # precut copies are used to mask run/lumi/evt (which are not sliced by ttbarcandCuts below)
+        ttag_s0_precut = ttag_s0
+        ttag_s1_precut = ttag_s1
 
-
-            
-
-                
+        # antitag = fail region for 2DAlphabet
+        # leading jet passes, subleading jet fails the tagger
+        antitag_disc = (
+            (jet1[self.tagger_field] < self.deepAK8disc)
+            & (jet1[self.tagger_field] > self.deepAK8low)
+        )
+        antitag = antitag_disc & ttag_s0 & mcut_s1
 
         
         # ---- Apply Delta Phi Cut for Back to Back Topology ---- #
@@ -551,9 +512,9 @@ class TTbarResProcessor(processor.ProcessorABC):
         SubJets = SubJets[ttbarcandCuts]
         events = events[ttbarcandCuts]
         evtweights = evtweights[ttbarcandCuts]
-        run = run[ttbarcandCuts & ttag_s0_1 & ttag_s1_1]
-        lumi = lumi[ttbarcandCuts  &  ttag_s0_1 & ttag_s1_1]
-        evt = evt[ttbarcandCuts & ttag_s0_1 & ttag_s1_1]
+        run = run[ttbarcandCuts & ttag_s0_precut & ttag_s1_precut]
+        lumi = lumi[ttbarcandCuts & ttag_s0_precut & ttag_s1_precut]
+        evt = evt[ttbarcandCuts & ttag_s0_precut & ttag_s1_precut]
 
         
 
@@ -606,12 +567,8 @@ class TTbarResProcessor(processor.ProcessorABC):
         #bdisc_s0 = np.maximum(SubJet00.btagDeepB , SubJet01.btagDeepB)
         #bdisc_s1 = np.maximum(SubJet10.btagDeepB , SubJet11.btagDeepB)
         
-        if (self.iov == '2023'):
-            tdisc_s0 = jet0.particleNet_XttVsQCD
-            tdisc_s1 = jet1.particleNet_XttVsQCD
-        elif (self.iov == '2024'):
-             tdisc_s0 = jet0.globalParT3_TopbWqq
-             tdisc_s1 = jet1.globalParT3_TopbWqq
+        tdisc_s0 = jet0[self.tagger_field]
+        tdisc_s1 = jet1[self.tagger_field]
         
         
         rapidity = getRapidity(jet0.p4) - getRapidity(jet1.p4)

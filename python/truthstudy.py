@@ -9,7 +9,7 @@ def _has_flag(status_flags, bit):
     return (status_flags & (1 << bit)) != 0
 
 
-def get_hadronic_tops(genparts):
+def get_hadronic_tops(genparts, verbose=False):
     # GenPart statusFlags bit 13 = isLastCopy
     last_copy = _has_flag(genparts.statusFlags, 13)
     is_top = (abs(genparts.pdgId) == 6) & last_copy
@@ -73,9 +73,10 @@ def get_hadronic_tops(genparts):
     n_semilep = ak.sum(n_had == 1)
     n_dilep = ak.sum(n_had == 0)
 
-    print("all-had:", int(n_allhad))
-    print("semi-lep:", int(n_semilep))
-    print("di-lep:", int(n_dilep))
+    if verbose:
+        print("all-had:", int(n_allhad))
+        print("semi-lep:", int(n_semilep))
+        print("di-lep:", int(n_dilep))
     tops = genparts[is_top]
     return tops[hadronic]
 
@@ -89,7 +90,7 @@ def _ensure_p4(collection):
 
 
 
-def get_groomed_jet( jet, subjets , verbose = False):
+def get_groomed_jet(jet, subjets, verbose=False):
     '''
     Find the subjets that correspond to the given jet using delta R matching. 
     This is suboptimal, but it's hard to fix upstream. 
@@ -240,8 +241,13 @@ def build_top_aligned_genjetak8_match_info(
     }
 
 
-def truthstudy_counts(genparts, fatjets, subJets, jets, dr_ak8=0.8, dr_ak4=1.2):
-    tops = get_hadronic_tops(genparts)
+# Working-point thresholds used in the exploratory diagnostic block
+_BTAG_WP = 0.5   # DeepFlavB medium WP
+_TTAG_WP = 0.4   # globalParT3 loose WP (exploratory only)
+
+
+def truthstudy_counts(genparts, fatjets, subJets, jets, dr_ak8=0.8, dr_ak4=1.2, verbose=False):
+    tops = get_hadronic_tops(genparts, verbose=verbose)
     mask = (ak.num(tops, axis=1) == 2)
 
     # keep only all‑hadronic events
@@ -251,14 +257,8 @@ def truthstudy_counts(genparts, fatjets, subJets, jets, dr_ak8=0.8, dr_ak4=1.2):
     subJets=subJets[mask]
     
     if ak.sum(mask) == 0:
-     return {"n_hadtop": 0, "n_hadtop_ak8": 0, "n_hadtop_ak8_ak4": 0}
-    
-    #all_tops = genparts[abs(genparts.pdgId) == 6]
-    #print(ak.num(all_tops, axis=1))
+        return {"n_hadtop": 0, "n_hadtop_ak8": 0, "n_hadtop_ak8_ak4": 0}
 
-    #build p4 if not present
-    print("tops fileds are ", tops.fields)
-    
     tops = _ensure_p4(tops)
     fatjets = _ensure_p4(fatjets)
     jets = _ensure_p4(jets)
@@ -287,41 +287,34 @@ def truthstudy_counts(genparts, fatjets, subJets, jets, dr_ak8=0.8, dr_ak4=1.2):
     ak4_outside_ak8 = dr_fat_ak4 > dr_ak8
     has_ak4_outside = ak.any(ak4_near_top & ak4_outside_ak8, axis=2)
     
-    btag_wp = 0.5  
-    is_btag = (jets.btagDeepFlavB > btag_wp)
+    is_btag = (jets.btagDeepFlavB > _BTAG_WP)
     has_btag_outside = ak.any(
-    ak4_near_top & ak4_outside_ak8 & is_btag[:, None, :], axis=2)  # -> [evt, nTop]
-    
-    print("number of TRUE AK8  jets:  ", int(ak.sum(ak.ones_like(has_ak8))))
-    print("number of MATCHED AK8 jets: ", int(ak.sum(has_ak8)))
-    print("number of AK4 close to AK8: ",  int(ak.sum(has_ak8 & has_ak4_outside)))
-    print("number of AK8 + AK4(btag):", int(ak.sum(has_ak8 & has_btag_outside)))
+        ak4_near_top & ak4_outside_ak8 & is_btag[:, None, :], axis=2)  # -> [evt, nTop]
 
-    evt_has_btag = ak.any(has_btag_outside, axis=1)   # [evt]
+    if verbose:
+        print("number of TRUE AK8  jets:  ", int(ak.sum(ak.ones_like(has_ak8))))
+        print("number of MATCHED AK8 jets: ", int(ak.sum(has_ak8)))
+        print("number of AK4 close to AK8: ",  int(ak.sum(has_ak8 & has_ak4_outside)))
+        print("number of AK8 + AK4(btag):", int(ak.sum(has_ak8 & has_btag_outside)))
 
-    # ---- top tag only for matched AK8 in extra‑AK4 events ----
-    matched_fat = fatjets[closest_fat_idx]           # [evt, nTop]
-    ttag_wp = 0.4
-    is_tagged = (matched_fat.globalParT3_TopbWqq > ttag_wp) & has_ak8
-    
-    # keep only events with extra AK4 btag
-    #is_tagged_btag = is_tagged[evt_has_btag]
-    #print("matched+tagged in extra‑AK4 events:", int(ak.sum(is_tagged_btag)))
-    matched_tagged_with_btag = is_tagged & has_ak4_outside #has_btag_outside
-    print("matched+tagged WITH extra AK4 btag:", int(ak.sum(matched_tagged_with_btag)))
-    
-    # ---- subjet counts only in extra‑AK4 events ----
-    fat_sel = fatjets[evt_has_btag]
-    evt_has_2fat = ak.num(fat_sel, axis=1) >= 2
-    fat_sel = fat_sel[evt_has_2fat]
-    
-    order = ak.argsort(fat_sel.pt, ascending=False)
-    fat2 = fat_sel[order][:, :2]
-    
-    nsub_ak8 = ak.values_astype(fat2.subJetIdx1 >= 0, np.int32) + ak.values_astype(fat2.subJetIdx2 >= 0, np.int32)
-    
-    print("nsubjets in AK8(lead, sublead) per event:", nsub_ak8[:10])
-    print("mean nsubjets per AK8:", ak.mean(ak.flatten(nsub_ak8)))
+        evt_has_btag = ak.any(has_btag_outside, axis=1)   # [evt]
+
+        # ---- top tag only for matched AK8 in extra-AK4 events ----
+        matched_fat = fatjets[closest_fat_idx]           # [evt, nTop]
+        is_tagged = (matched_fat.globalParT3_TopbWqq > _TTAG_WP) & has_ak8
+        matched_tagged_with_btag = is_tagged & has_ak4_outside
+        print("matched+tagged WITH extra AK4 btag:", int(ak.sum(matched_tagged_with_btag)))
+
+        # ---- subjet counts only in extra-AK4 events ----
+        fat_sel = fatjets[evt_has_btag]
+        fat_sel = fat_sel[ak.num(fat_sel, axis=1) >= 2]
+        fat2 = fat_sel[ak.argsort(fat_sel.pt, ascending=False)][:, :2]
+        nsub_ak8 = (
+            ak.values_astype(fat2.subJetIdx1 >= 0, np.int32)
+            + ak.values_astype(fat2.subJetIdx2 >= 0, np.int32)
+        )
+        print("nsubjets in AK8(lead, sublead) per event:", nsub_ak8[:10])
+        print("mean nsubjets per AK8:", ak.mean(ak.flatten(nsub_ak8)))
 
 
     
