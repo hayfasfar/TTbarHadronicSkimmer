@@ -263,7 +263,7 @@ class TTbarResProcessor(processor.ProcessorABC):
         corrections = self.jet_manager.build_corrections(events, isData)
         
         if corrections is None:
-            return processor.accumulate([self.process_analysis(events, 'nominal', nEvents)])
+            return self.process_analysis(events, 'nominal', nEvents)
 
 
         # loop through corrections
