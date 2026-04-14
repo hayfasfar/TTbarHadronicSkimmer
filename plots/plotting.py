@@ -280,6 +280,80 @@ def plotSystematics(IOV, dataset='TTbar', dirstring=''):
 
 
                 
+def plotDataMCRun3(IOV='2023', dirstring='dy'):
+    """Data/MC comparison in the antitag (control) region for Run-3 IOVs."""
+
+    print(f'\nPlotting Run-3 Data/MC comparison  IOV={IOV}\n')
+
+    hists = ['jetmsd', 'jetmsd1', 'ttbarmass', 'ht', 'jetdy']
+
+    regions = {
+        'acen': antitag_cen_cats,
+        'afwd': antitag_fwd_cats,
+    }
+
+    coffea_dir = f'../outputs/{dirstring}/scale/'
+    fttbar = util.load(coffea_dir + f'TTbar_{IOV}.coffea')
+    fdata  = util.load(coffea_dir + f'JetMET_{IOV}.coffea')
+
+    lumitext = '{0:0.1f}'.format(functions.lumi[IOV] / 1000.)
+
+    os.makedirs(f'images/{dirstring}/png/datamc/{IOV}/', exist_ok=True)
+    os.makedirs(f'images/{dirstring}/pdf/datamc/{IOV}/', exist_ok=True)
+
+    for catname, cat_list in regions.items():
+
+        for histname in hists:
+
+            integrate_axes = {'systematic': 'nominal', 'anacat': cat_list}
+
+            h_ttbar = fttbar[histname][integrate_axes][{'anacat': sum}]
+            h_data  = fdata[histname][integrate_axes][{'anacat': sum}]
+            h_bkg   = h_ttbar
+
+            h_unc = fttbar[histname][{'anacat': cat_list}][{'anacat': sum}]
+            systUp, systDn = getUncertainy(h_ttbar, h_unc)
+
+            fig, (ax1, ax2) = plt.subplots(nrows=2, height_ratios=[3, 1])
+
+            hep.cms.label('Preliminary', data=True,
+                          lumi=lumitext, year=IOV,
+                          loc=2, fontsize=20, ax=ax1)
+
+            hep.histplot(h_bkg,  histtype='fill',      color=plotred,   label='SM TTbar', ax=ax1)
+            hep.histplot(h_data, histtype='errorbar',  color='black',   label='Data',     ax=ax1)
+
+            ax1.fill_between(h_bkg.axes[0].centers,
+                             h_bkg.values() - systDn,
+                             h_bkg.values() + systUp,
+                             alpha=0.3, color='grey', label='Syst. unc.')
+
+            ax1.legend(fontsize=14)
+            ax1.set_xlabel('')
+            ax1.set_ylabel('Events')
+
+            ratio_plot = h_data / h_bkg.values()
+            hep.histplot(ratio_plot, ax=ax2, histtype='errorbar', color='black')
+            ax2.fill_between(h_bkg.axes[0].centers,
+                             1. - systDn / h_bkg.values(),
+                             1. + systUp / h_bkg.values(),
+                             alpha=0.3, color='grey')
+            ax2.axhline(1, color='black', ls='--', lw=1)
+            ax2.set_ylim(0.5, 1.5)
+            ax2.set_ylabel('Data/MC')
+            ax2.set_xlabel(h_bkg.axes[0].label)
+
+            plt.tight_layout()
+
+            pngfile = f'images/{dirstring}/png/datamc/{IOV}/{catname}_{histname}.png'
+            pdffile = f'images/{dirstring}/pdf/datamc/{IOV}/{catname}_{histname}.pdf'
+            plt.savefig(pngfile)
+            plt.savefig(pdffile)
+            print('saving', pngfile)
+
+            plt.close()
+
+
 def plotClosureTest():
 
     
