@@ -296,10 +296,13 @@ class TTbarResProcessor(processor.ProcessorABC):
         
         # lumi mask #
         if (isData):
-            
+
             lumi_mask = np.array(getLumiMask(self.iov)(events.run, events.luminosityBlock), dtype=bool)
             events = events[lumi_mask]
             del lumi_mask
+            if isNominal:
+                output['cutflow']['after_lumimask'] += len(events)
+                print(f"[CUTFLOW] after lumimask: {len(events)}")
 
         
         
@@ -326,15 +329,11 @@ class TTbarResProcessor(processor.ProcessorABC):
         run = events.run.to_numpy()
         lumi = events.luminosityBlock.to_numpy()
         evt = events.event.to_numpy()
-        '''
-        print("\n--- FatJet variables ---")
-        for var in events.FatJet.fields:
-            print("FatJet_" + var)
-
-        print("\n--- SubJet variables ---")
-        for var in events.SubJet.fields:
-            print("SubJet_" + var)
-        '''
+        if 'globalParT3_TopbWqq' not in events.FatJet.fields:
+            print("\n--- FatJet variables (globalParT3_TopbWqq missing, available fields) ---")
+            for var in events.FatJet.fields:
+                print("FatJet_" + var)
+            raise RuntimeError(f"globalParT3_TopbWqq not found in FatJet fields for dataset {events.metadata['dataset']}")
         logger.debug('memory:%s: get nanoAOD objects %s:%s', time.time(), correction, get_memory_usage())
 
         
@@ -388,17 +387,16 @@ class TTbarResProcessor(processor.ProcessorABC):
         
         # at least 2 ak8 jets #
         selection.add('twoFatJets', jet_masks['twoFatJets'])
-        
-        # event cuts #
-        ''' 
-        # save cutflow
+
+        # save per-cut counts for debugging
         if isNominal:
             cuts = []
             for cut in selection.names:
                 cuts.append(cut)
-                output['cutflow'][cut] += len(FatJets[selection.all(*cuts)])
-            del cuts
-        '''    
+                n = int(ak.sum(selection.all(*cuts)))
+                output['cutflow'][cut] += n
+                print(f"[CUTFLOW] after {cut} (cumulative): {n}")
+
         eventCut = selection.all(*selection.names)
                             
         FatJets = FatJets[eventCut]
@@ -411,6 +409,9 @@ class TTbarResProcessor(processor.ProcessorABC):
         lumi = lumi[eventCut]
         evt = evt[eventCut]
         # if event cut results in few events
+        if isNominal:
+            output['cutflow']['after_eventCut'] += len(events)
+            print(f"[CUTFLOW] after all preselection (eventCut): {len(events)}")
         logger.debug(f"Length of event {len(events)}")
         if (len(events) < 10): return output
 
@@ -516,7 +517,13 @@ class TTbarResProcessor(processor.ProcessorABC):
         lumi = lumi[ttbarcandCuts & ttag_s0_precut & ttag_s1_precut]
         evt = evt[ttbarcandCuts & ttag_s0_precut & ttag_s1_precut]
 
-        
+        if isNominal:
+            output['cutflow']['after_ttbarcandCuts'] += len(events)
+            n_dPhi = int(ak.sum(dPhiCut))
+            n_subjets = int(ak.sum(GoodSubjets))
+            n_both = int(ak.sum(dPhiCut & GoodSubjets))
+            print(f"[CUTFLOW] after ttbarcandCuts: {len(events)}  "
+                  f"(dPhiCut alone: {n_dPhi}, GoodSubjets alone: {n_subjets}, both: {n_both})")
 
         if isNominal:
           before = len(output["event_list"]["run"])
@@ -547,7 +554,8 @@ class TTbarResProcessor(processor.ProcessorABC):
         jet2 = FatJets[third_jet_mask][:,2]
         dR_jet0_jet2 = jet0[third_jet_mask].p4.delta_r(jet2.p4)
         dR_jet1_jet2 = jet1[third_jet_mask].p4.delta_r(jet2.p4)
-        ttbarmass = (jet0.p4 + jet1.p4).mass 
+        ttbarmass = (jet0.p4 + jet1.p4).mass
+        ht = ak.sum(Jets[(Jets.pt > 30) & (np.abs(Jets.eta) < 3.0)].pt, axis=1)
 
 
         # ttbarmass
@@ -659,6 +667,11 @@ class TTbarResProcessor(processor.ProcessorABC):
             rapidity=rapidity,
             anacats=self.anacats,
         )
+        if isNominal:
+            print(f"[CUTFLOW] antitag: {int(ak.sum(antitag))}, ttag_s0: {int(ak.sum(ttag_s0))}, "
+                  f"ttag_s1: {int(ak.sum(ttag_s1))}, 2tag: {int(ak.sum(ttag_s0 & ttag_s1))}")
+            for lbl, cat in labels_and_categories.items():
+                print(f"[CUTFLOW] category '{lbl}': {int(ak.sum(cat))}")
     
     
     
@@ -736,11 +749,69 @@ class TTbarResProcessor(processor.ProcessorABC):
                                          ttbarmass = ttbarmass[icat],
                                          weight = self.weights[correction].weight()[icat],
                                         )
+            output['jetmsd1'].fill(systematic=correction,
+                                   anacat = i,
+                                   jetmsd = jetmsd1[icat],
+                                   weight = self.weights[correction].weight()[icat],
+                                  )
+            output['jetdy'].fill(systematic=correction,
+                                 anacat = i,
+                                 jetdy = rapidity[icat],
+                                 weight = self.weights[correction].weight()[icat],
+                                )
+            output['ht'].fill(systematic=correction,
+                              anacat = i,
+                              ht = ht[icat],
+                              weight = self.weights[correction].weight()[icat],
+                             )
+            output['jet0_pt'].fill(systematic=correction,
+                                   anacat=i,
+                                   jetpt=jetpt[icat],
+                                   weight=self.weights[correction].weight()[icat],
+                                  )
+            output['jet0_eta'].fill(systematic=correction,
+                                    anacat=i,
+                                    jeteta=jeteta[icat],
+                                    weight=self.weights[correction].weight()[icat],
+                                   )
+            output['jet0_phi'].fill(systematic=correction,
+                                    anacat=i,
+                                    jetphi=jetphi[icat],
+                                    weight=self.weights[correction].weight()[icat],
+                                   )
+            output['jet0_rapidity'].fill(systematic=correction,
+                                         anacat=i,
+                                         jety=jety[icat],
+                                         weight=self.weights[correction].weight()[icat],
+                                        )
+            output['jet1_pt'].fill(systematic=correction,
+                                   anacat=i,
+                                   jetpt=jetpt1[icat],
+                                   weight=self.weights[correction].weight()[icat],
+                                  )
+            output['jet1_eta'].fill(systematic=correction,
+                                    anacat=i,
+                                    jeteta=jeteta1[icat],
+                                    weight=self.weights[correction].weight()[icat],
+                                   )
+            output['jet1_phi'].fill(systematic=correction,
+                                    anacat=i,
+                                    jetphi=jetphi1[icat],
+                                    weight=self.weights[correction].weight()[icat],
+                                   )
+            output['jet1_rapidity'].fill(systematic=correction,
+                                         anacat=i,
+                                         jety=jety1[icat],
+                                         weight=self.weights[correction].weight()[icat],
+                                        )
 
             if gen_top_match_info is not None:
                 truth_cat_mask = icat[gen_top_match_info["event_mask"]]
                 truth_event_weights = self.weights[correction].weight()[gen_top_match_info["event_mask"]]
                 truth_weights = truth_event_weights[truth_cat_mask]
+
+                if ak.sum(truth_cat_mask) == 0:
+                    continue
 
                 output["gen_mt"].fill(
                     systematic=correction,
@@ -905,7 +976,62 @@ class TTbarResProcessor(processor.ProcessorABC):
                                         ttbarmass = ttbarmass[icat],
                                         weight = self.weights[correction].weight(syst)[icat],
                                         )
-                    
+                    output['jetmsd1'].fill(systematic=syst,
+                                          anacat=i,
+                                          jetmsd=jetmsd1[icat],
+                                          weight=self.weights[correction].weight(syst)[icat],
+                                         )
+                    output['jetdy'].fill(systematic=syst,
+                                        anacat=i,
+                                        jetdy=rapidity[icat],
+                                        weight=self.weights[correction].weight(syst)[icat],
+                                       )
+                    output['ht'].fill(systematic=syst,
+                                     anacat=i,
+                                     ht=ht[icat],
+                                     weight=self.weights[correction].weight(syst)[icat],
+                                    )
+                    output['jet0_pt'].fill(systematic=syst,
+                                          anacat=i,
+                                          jetpt=jetpt[icat],
+                                          weight=self.weights[correction].weight(syst)[icat],
+                                         )
+                    output['jet0_eta'].fill(systematic=syst,
+                                           anacat=i,
+                                           jeteta=jeteta[icat],
+                                           weight=self.weights[correction].weight(syst)[icat],
+                                          )
+                    output['jet0_phi'].fill(systematic=syst,
+                                           anacat=i,
+                                           jetphi=jetphi[icat],
+                                           weight=self.weights[correction].weight(syst)[icat],
+                                          )
+                    output['jet0_rapidity'].fill(systematic=syst,
+                                                anacat=i,
+                                                jety=jety[icat],
+                                                weight=self.weights[correction].weight(syst)[icat],
+                                               )
+                    output['jet1_pt'].fill(systematic=syst,
+                                          anacat=i,
+                                          jetpt=jetpt1[icat],
+                                          weight=self.weights[correction].weight(syst)[icat],
+                                         )
+                    output['jet1_eta'].fill(systematic=syst,
+                                           anacat=i,
+                                           jeteta=jeteta1[icat],
+                                           weight=self.weights[correction].weight(syst)[icat],
+                                          )
+                    output['jet1_phi'].fill(systematic=syst,
+                                           anacat=i,
+                                           jetphi=jetphi1[icat],
+                                           weight=self.weights[correction].weight(syst)[icat],
+                                          )
+                    output['jet1_rapidity'].fill(systematic=syst,
+                                                anacat=i,
+                                                jety=jety1[icat],
+                                                weight=self.weights[correction].weight(syst)[icat],
+                                               )
+
                     '''
                     output['weights'][syst] += np.sum(self.weights[correction].weight(syst))
                     output['systematics'][syst] += len(events.event[icat])
