@@ -165,6 +165,8 @@ class TTbarResProcessor(processor.ProcessorABC):
                 '2018':    0.920,
             } 
         }
+
+    
     
         
         self.logger = Logger(mode='debug' if debug else 'info')
@@ -196,9 +198,9 @@ class TTbarResProcessor(processor.ProcessorABC):
             self.deepAK8low = 0.2
 
         # tagger discriminant field name, IOV-dependent
+        # 2024 uses a composite GloParTv3 TopvsQCD score (see _tscore); no single field name
         _tagger_fields = {
             '2023': 'particleNet_XttVsQCD',
-            '2024': 'globalParT3_TopbWqq',
         }
         self.tagger_field = _tagger_fields.get(self.iov)
 
@@ -229,6 +231,18 @@ class TTbarResProcessor(processor.ProcessorABC):
       
 
         
+    def _tscore(self, jet):
+        """Return the top-tagger discriminant for one or more jets.
+
+        2024: mass-decorrelated GloParTv3 TopvsQCD =
+              (TopbWqq + TopbWq) / (TopbWqq + TopbWq + QCD)
+        Other IOVs: single NanoAOD field stored in self.tagger_field.
+        """
+        if self.iov == '2024':
+            num = jet.globalParT3_TopbWqq + jet.globalParT3_TopbWq
+            return num / (num + jet.globalParT3_QCD)
+        return jet[self.tagger_field]
+
     @property
     def accumulator(self):
         return self._accumulator
@@ -446,7 +460,7 @@ class TTbarResProcessor(processor.ProcessorABC):
         FatJet_pt_argsort = ak.argsort(FatJets.pt, ascending=False)
         SortedFatJets = FatJets[FatJet_pt_argsort]
 
-        lead_score_higher = SortedFatJets[:, 0][self.tagger_field] > SortedFatJets[:, 1][self.tagger_field]
+        lead_score_higher = self._tscore(SortedFatJets[:, 0]) > self._tscore(SortedFatJets[:, 1])
         jet0 = ak.where(lead_score_higher, SortedFatJets[:, 0], SortedFatJets[:, 1])
         jet1 = ak.where(lead_score_higher, SortedFatJets[:, 1], SortedFatJets[:, 0])
         mcut_s0 = ((self.minMSD < jet0.msoftdrop) & (jet0.msoftdrop < self.maxMSD) )
@@ -466,8 +480,8 @@ class TTbarResProcessor(processor.ProcessorABC):
 
         # signal = pass region for 2DAlphabet: both jets pass deepak8 tagger
         # jet0 = leading in tagger score, jet1 = subleading
-        ttag_s0 = (jet0[self.tagger_field] > self.deepAK8disc)
-        ttag_s1 = (jet1[self.tagger_field] > self.deepAK8disc) & mcut_s1
+        ttag_s0 = (self._tscore(jet0) > self.deepAK8disc)
+        ttag_s1 = (self._tscore(jet1) > self.deepAK8disc) & mcut_s1
         # precut copies are used to mask run/lumi/evt (which are not sliced by ttbarcandCuts below)
         ttag_s0_precut = ttag_s0
         ttag_s1_precut = ttag_s1
@@ -475,8 +489,8 @@ class TTbarResProcessor(processor.ProcessorABC):
         # antitag = fail region for 2DAlphabet
         # leading jet passes, subleading jet fails the tagger
         antitag_disc = (
-            (jet1[self.tagger_field] < self.deepAK8disc)
-            & (jet1[self.tagger_field] > self.deepAK8low)
+            (self._tscore(jet1) < self.deepAK8disc)
+            & (self._tscore(jet1) > self.deepAK8low)
         )
         antitag = antitag_disc & ttag_s0 & mcut_s1
 
@@ -575,8 +589,8 @@ class TTbarResProcessor(processor.ProcessorABC):
         #bdisc_s0 = np.maximum(SubJet00.btagDeepB , SubJet01.btagDeepB)
         #bdisc_s1 = np.maximum(SubJet10.btagDeepB , SubJet11.btagDeepB)
         
-        tdisc_s0 = jet0[self.tagger_field]
-        tdisc_s1 = jet1[self.tagger_field]
+        tdisc_s0 = self._tscore(jet0)
+        tdisc_s1 = self._tscore(jet1)
         
         
         rapidity = getRapidity(jet0.p4) - getRapidity(jet1.p4)
