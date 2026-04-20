@@ -122,7 +122,8 @@ class TTbarResProcessor(processor.ProcessorABC):
                  blinding=False,
                  systematics = ['nominal', 'pileup', 'pdf', 'q2', "ttag_pt1"],
                  anacats = ['2t0bcen'],
-                 debug = False
+                 debug = False,
+                 produce_ntuple = False,
                  #rpf_params = {'params':[1.0], 'errors':[0.0]},
                 ):
                  
@@ -141,7 +142,8 @@ class TTbarResProcessor(processor.ProcessorABC):
         self.noSyst = noSyst
         self.systematics = systematics
         self.blinding = blinding
-        self.debug = debug  
+        self.debug = debug
+        self.produce_ntuple = produce_ntuple
         #self.rpf_params = rpf_params        
     
         # from https://twiki.cern.ch/twiki/bin/view/CMS/DeepAK8Tagging2018WPsSFs#2016_Data
@@ -226,6 +228,7 @@ class TTbarResProcessor(processor.ProcessorABC):
             anacats=self.anacats,
             systematics=self.systematics,
             no_syst=self.noSyst,
+            produce_ntuple=self.produce_ntuple,
         )
         
       
@@ -594,6 +597,7 @@ class TTbarResProcessor(processor.ProcessorABC):
         
         
         rapidity = getRapidity(jet0.p4) - getRapidity(jet1.p4)
+        chi = np.exp(np.abs(rapidity))
         jet0_abs_eta = np.abs(jet0.eta)
         jet1_abs_eta = np.abs(jet1.eta)
 
@@ -691,7 +695,6 @@ class TTbarResProcessor(processor.ProcessorABC):
     
         #logger.debug('memory:%s: get analysis categories %s:%s', time.time(), correction, get_memory_usage())
 
-        
         antitag_probe = np.logical_and(antitag, ttag_s1)
         self.weights[correction] = self.weight_manager.build_weights(
             dataset=dataset,
@@ -723,7 +726,33 @@ class TTbarResProcessor(processor.ProcessorABC):
         jetmsd = jet0.msoftdrop
         jetmsd1 = jet1.msoftdrop
 
-        
+        if isNominal and self.produce_ntuple:
+            anacat_arr = np.full(len(events), -1, dtype=np.int64)
+            for _i, (_lbl, _mask) in enumerate(labels_and_categories.items()):
+                anacat_arr[ak.to_numpy(_mask)] = _i
+
+            output["ntuple"]["jet0_pt"]    += processor.column_accumulator(ak.to_numpy(jetpt).astype(np.float32))
+            output["ntuple"]["jet0_eta"]   += processor.column_accumulator(ak.to_numpy(jeteta).astype(np.float32))
+            output["ntuple"]["jet0_phi"]   += processor.column_accumulator(ak.to_numpy(jetphi).astype(np.float32))
+            output["ntuple"]["jet0_msd"]   += processor.column_accumulator(ak.to_numpy(jetmsd).astype(np.float32))
+            output["ntuple"]["jet0_tdisc"] += processor.column_accumulator(ak.to_numpy(tdisc_s0).astype(np.float32))
+            output["ntuple"]["jet1_pt"]    += processor.column_accumulator(ak.to_numpy(jetpt1).astype(np.float32))
+            output["ntuple"]["jet1_eta"]   += processor.column_accumulator(ak.to_numpy(jeteta1).astype(np.float32))
+            output["ntuple"]["jet1_phi"]   += processor.column_accumulator(ak.to_numpy(jetphi1).astype(np.float32))
+            output["ntuple"]["jet1_msd"]   += processor.column_accumulator(ak.to_numpy(jetmsd1).astype(np.float32))
+            output["ntuple"]["jet1_tdisc"] += processor.column_accumulator(ak.to_numpy(tdisc_s1).astype(np.float32))
+            output["ntuple"]["ttbarmass"]  += processor.column_accumulator(ak.to_numpy(ttbarmass).astype(np.float32))
+            output["ntuple"]["ht"]         += processor.column_accumulator(ak.to_numpy(ht).astype(np.float32))
+            output["ntuple"]["dy"]           += processor.column_accumulator(ak.to_numpy(rapidity).astype(np.float32))
+            output["ntuple"]["chi"]          += processor.column_accumulator(ak.to_numpy(chi).astype(np.float32))
+            output["ntuple"]["jet0_rapidity"] += processor.column_accumulator(ak.to_numpy(jety).astype(np.float32))
+            output["ntuple"]["jet1_rapidity"] += processor.column_accumulator(ak.to_numpy(jety1).astype(np.float32))
+            output["ntuple"]["weight"]     += processor.column_accumulator(ak.to_numpy(evtweights).astype(np.float32))
+            output["ntuple"]["anacat"]     += processor.column_accumulator(anacat_arr)
+            output["ntuple"]["run"]        += processor.column_accumulator(ak.to_numpy(events.run).astype(np.int64))
+            output["ntuple"]["lumi"]       += processor.column_accumulator(ak.to_numpy(events.luminosityBlock).astype(np.int64))
+            output["ntuple"]["event"]      += processor.column_accumulator(ak.to_numpy(events.event).astype(np.int64))
+
         # values for mistag rate calculation #
         numerator = np.where(antitag_probe, jet1.p4.p, -1)
         denominator = np.where(antitag, jet1.p4.p, -1)
@@ -773,6 +802,11 @@ class TTbarResProcessor(processor.ProcessorABC):
                                  jetdy = rapidity[icat],
                                  weight = self.weights[correction].weight()[icat],
                                 )
+            output['chi'].fill(systematic=correction,
+                               anacat = i,
+                               chi = chi[icat],
+                               weight = self.weights[correction].weight()[icat],
+                              )
             output['ht'].fill(systematic=correction,
                               anacat = i,
                               ht = ht[icat],
@@ -1000,6 +1034,11 @@ class TTbarResProcessor(processor.ProcessorABC):
                                         jetdy=rapidity[icat],
                                         weight=self.weights[correction].weight(syst)[icat],
                                        )
+                    output['chi'].fill(systematic=syst,
+                                       anacat=i,
+                                       chi=chi[icat],
+                                       weight=self.weights[correction].weight(syst)[icat],
+                                      )
                     output['ht'].fill(systematic=syst,
                                      anacat=i,
                                      ht=ht[icat],

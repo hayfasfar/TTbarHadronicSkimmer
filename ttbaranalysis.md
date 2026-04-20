@@ -6,9 +6,9 @@ jupyter:
       extension: .md
       format_name: markdown
       format_version: '1.3'
-      jupytext_version: 1.19.1
+      jupytext_version: 1.19.0
   kernelspec:
-    display_name: coffea_latest
+    display_name: Python 3 (ipykernel)
     language: python
     name: python3
 ---
@@ -60,7 +60,7 @@ from python.functions import printTime, makeSaveDirectories
 %autoreload 2
 ```
 
-```python
+```python jupyter={"source_hidden": true}
 # ── Widgets for interactive configuration ─────────────────────────────────────
 import ipywidgets as widgets
 from IPython.display import display
@@ -83,6 +83,7 @@ DEFAULTS = dict(
     btagger="deepcsv",
     ht="1400",
     noSyst=False,
+    ntuple=False,
     dask=False,
     env="lpc",
     test=False,
@@ -116,6 +117,7 @@ def save_config(_=None):
         btagger=w_btagger.value,
         ht=w_ht.value,
         noSyst=w_noSyst.value,
+        ntuple=w_ntuple.value,
         dask=w_dask.value,
         env=w_env.value,
         test=w_test.value,
@@ -211,6 +213,7 @@ w_redirector = widgets.Dropdown(
     options=[
         ("Local (rootfiles/)", "rootfiles/"),
         ("FNAL XRootD (root://cmsxrootd.fnal.gov/)", "root://cmsxrootd.fnal.gov/"),
+        ("CMS xcache (root://xcache/)", "root://xcache/"),
     ],
     value=cfg["redirector"],
     description="Redirector",
@@ -240,6 +243,9 @@ w_ht = widgets.Dropdown(
 )
 w_noSyst = widgets.Checkbox(
     value=cfg["noSyst"], description="No syst", style=style, layout=layout
+)
+w_ntuple = widgets.Checkbox(
+    value=cfg["ntuple"], description="Ntuple", style=style, layout=layout
 )
 
 # ── Run options ───────────────────────────────────────────────────────────────
@@ -276,6 +282,7 @@ for _w in [
     w_btagger,
     w_ht,
     w_noSyst,
+    w_ntuple,
     w_dask,
     w_env,
     w_test,
@@ -300,6 +307,7 @@ def reset_to_defaults(_):
     w_btagger.value = DEFAULTS["btagger"]
     w_ht.value = DEFAULTS["ht"]
     w_noSyst.value = DEFAULTS["noSyst"]
+    w_ntuple.value = DEFAULTS["ntuple"]
     w_dask.value = DEFAULTS["dask"]
     w_env.value = DEFAULTS["env"]
     w_test.value = DEFAULTS["test"]
@@ -334,6 +342,7 @@ col3 = widgets.VBox(
         w_btagger,
         w_ht,
         w_noSyst,
+        w_ntuple,
     ],
     layout=widgets.Layout(margin="0 8px 0 0"),
 )
@@ -377,6 +386,7 @@ def build_args():
         btagger=w_btagger.value,
         ht=w_ht.value,
         noSyst=w_noSyst.value,
+        ntuple=w_ntuple.value,
         dask=w_dask.value,
         env=w_env.value,
         test=w_test.value,
@@ -384,7 +394,7 @@ def build_args():
     )
 
 
-args = build_args()
+args = build_args()  
 print("------args------")
 for argname, value in vars(args).items():
     print(argname, "=", value)
@@ -518,6 +528,7 @@ def run_analysis(args):
 
     makeSaveDirectories(coffea_dir=savedir)
 
+    output = None
     metrics = None
 
     for sample in samples:
@@ -619,6 +630,7 @@ def run_analysis(args):
                             systematics=systematics,
                             blinding=args.blind,
                             debug=True,
+                            produce_ntuple=args.ntuple,
                         ),
                     )
                 else:
@@ -718,6 +730,7 @@ def run_analysis(args):
                                 anacats=anacats,
                                 systematics=systematics,
                                 blinding=args.blind,
+                                produce_ntuple=args.ntuple,
                             ),
                         )
 
@@ -737,12 +750,13 @@ def run_analysis(args):
 ```
 
 ```python
+
 args = build_args()
 run_summary = run_analysis(args)
 ```
 
 ```python
-
+!python write_ntuple.py outputs/dy/TTbar_2024inclusive_noSyst.coffea TTbar_2024_ntuple.root ttbar
 ```
 
 ```python
@@ -757,7 +771,7 @@ output["cutflow"]
 ```
 
 ```python
-output["ttbarmass"]
+output["ttbarmass"].project('ttbarmass').plot()
 ```
 
 ```python

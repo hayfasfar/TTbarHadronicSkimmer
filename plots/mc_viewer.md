@@ -8,21 +8,10 @@ jupyter:
       format_version: '1.3'
       jupytext_version: 1.19.0
   kernelspec:
-    display_name: base
+    display_name: Python 3 (ipykernel)
     language: python
     name: python3
 ---
-
-```python
-print(r"""
- _____
-|     \
-|      |
-|_____/
-|
-|
-""")
-```
 
 ```python
 %load_ext autoreload
@@ -49,14 +38,14 @@ hplot.setup(era="2024")
 # ── Load MC samples ──────────────────────────────────────────────────────────
 samples = {
     'TTbar':      load('./outputs/dy/TTbar_2024inclusive_noSyst.coffea'),
-    # 'QCD':      load('./outputs/dy/QCD_2024inclusive_noSyst.coffea'),
-    'ZPrime4000': load('./outputs/dy/ZPrime4000_1_2024_noSyst.coffea'),
+     'QCD':      load('./outputs/dy/QCD_2024inclusive_noSyst.coffea'),
+    #'ZPrime4000': load('./outputs/dy/ZPrime4000_1_2024_noSyst.coffea'),
 }
 
 # Convenience: colors and display labels per sample
 sample_style = {
     'TTbar':      {'color': CMS_COLORS[0], 'label': r'$t\bar{t}$'},
-    # 'QCD':      {'color': CMS_COLORS[1], 'label': 'QCD'},
+    'QCD':      {'color': CMS_COLORS[1], 'label': 'QCD'},
     'ZPrime4000': {'color': CMS_COLORS[2], 'label': "Z' (4 TeV)"},
 }
 ```
@@ -217,4 +206,8 @@ for sample_name, output in samples.items():
     print(f"── {sample_name} ──")
     print(output['cutflow'])
     print()
+```
+
+```python
+
 ```

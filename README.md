@@ -31,7 +31,7 @@ git clone -b coffea-2025 https://github.com/mandalaritra1/TTbarHadronicSkimmer.g
 ```bash
 cd TTbarHadronicSkimmer 
 ```
-Setup lpcjobqueue by following instruction from [here](https://github.com/CoffeaTeam/lpcjobqueue). Afterwards, the sigularity container can be run with:
+Setup lpcjobqueue by following instruction from [here](https://github.com/CoffeaTeam/lpcjobqueue). Afterwards, the singularity container can be run with:
 
 ```bash
 ./shell coffeateam/coffea-dask-almalinux9:2025.12.0-py3.12  
@@ -65,16 +65,58 @@ Open [`ttbaranalysis.ipynb`](ttbaranalysis.ipynb) and run with the CASA configur
 
 ## Running Jobs
 
+### Interactive notebook
+
+Open [`ttbaranalysis.ipynb`](ttbaranalysis.ipynb) and use the configuration widgets to select datasets, IOV, taggers, systematics, and execution mode. Settings are auto-saved to `.last_config.json`.
+
+### Command line
+
 ```bash
-python ttbaranalysis.py --iov 2024 --dataset ZPrime1 
+python ttbaranalysis.py --iov 2024 --dataset TTbar
 ```
 
-> **Note:** You can add `--noSyst` to run without systematics or `--test` to run on 1 chunk.
+Common options:
 
-> **coffea.casa:** Use the CASA configuration in [`ttbaranalysis.ipynb`](ttbaranalysis.ipynb), or set `--env casa` when running from the command line.
+| Flag | Description |
+|---|---|
+| `--iov` | Year: `2022`, `2023`, `2024` |
+| `--dataset` | `data`, `TTbar`, `QCD`, `ZPrime1`, `ZPrime10`, `ZPrime30`, `ZPrimeDM`, `RSGluon`, `ZPrimeLocal` |
+| `--era` | Filter to specific era(s), e.g. `--era C --era D` |
+| `--noSyst` | Run nominal only (no systematics) |
+| `--ntuple` | Collect flat per-event ntuple in the `.coffea` output |
+| `--test` | Run on 1 chunk with 1 worker |
+| `--blind` | Process 1/10th of data |
+| `--ttagWP` | Top-tagger working point: `loose`, `medium` (default), `tight` |
+| `--ht` | HT cut: `1400` (default) or `950` |
+| `--dask` | Use Dask executor instead of futures |
+| `--env` | `lpc` (default), `casa`, `winterfell`, `local` |
+| `-r` | XRootD redirector URL (default: `root://cmsxrootd.fnal.gov/`) |
 
-For now the analysis can run on 2023 and 2024 datasets. 
+For now the analysis can run on 2022, 2023, and 2024 datasets.
+
+## Output
+
+The processor saves a `.coffea` file per dataset/era to `outputs/dy/`. Files are named automatically, e.g.:
+
+```
+outputs/dy/TTbar_2024_noSyst_test.coffea
+outputs/dy/TTbar_2024_ntuple.coffea       # when --ntuple is set
+```
+
+## Flat ntuple (ROOT TTree)
+
+When `--ntuple` is set (or the **Ntuple** checkbox is ticked in the notebook), a flat per-event ntuple is embedded in the `.coffea` output. Convert it to a ROOT TTree with:
+
+```bash
+python write_ntuple.py outputs/dy/TTbar_2024_ntuple.coffea TTbar_2024.root ttbar
+```
+
+No ROOT installation is required — `uproot` handles the file writing.
+
+Branches stored: `jet0/1_pt`, `jet0/1_eta`, `jet0/1_phi`, `jet0/1_msd`, `jet0/1_tdisc`, `jet0/1_rapidity`, `ttbarmass`, `ht`, `dy` (Δy), `chi` (χ_dijet = exp|Δy|), `weight`, `anacat`, `run`, `lumi`, `event`.
 
 ## Viewing Histograms
 
 To view basic histograms and systematic variations after running, use [`plots/syst_viewer.ipynb`](plots/syst_viewer.ipynb).
+
+To plot distributions from the flat ntuple, use [`plots/ntuple_plots.ipynb`](plots/ntuple_plots.ipynb).

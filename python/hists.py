@@ -1,4 +1,5 @@
 import hist
+import numpy as np
 from coffea import processor
 
 
@@ -13,7 +14,7 @@ def _flatten_hist_tree(tree):
     return flat
 
 
-def build_output_histograms(anacats, systematics, no_syst):
+def build_output_histograms(anacats, systematics, no_syst, produce_ntuple=False):
     syst_category_strings = ["nominal"]
     if not no_syst:
         for s in systematics:
@@ -32,6 +33,7 @@ def build_output_histograms(anacats, systematics, no_syst):
     ht_axis = hist.axis.Regular(40, 400, 4400, name="ht", label=r"$H_T$ [GeV]")
     manual_axis = hist.axis.Variable(manual_bins, name="jetp", label=r"Jet Momentum [GeV]")
     jetdy_axis = hist.axis.Regular(50, -3, 3, name="jetdy", label=r"$\Delta y$")
+    chi_axis   = hist.axis.Regular(50, 1, 30, name="chi",   label=r"$\chi_\mathrm{dijet}$")
     jetpt_axis = hist.axis.Regular(50, 300, 2000, name="jetpt", label=r"Jet $p_T$ [GeV]")
     jeteta_axis = hist.axis.Regular(50, -3, 3, name="jeteta", label=r"Jet $\eta$")
     jetphi_axis = hist.axis.Regular(50, -3.14159, 3.14159, name="jetphi", label=r"Jet $\phi$")
@@ -59,6 +61,7 @@ def build_output_histograms(anacats, systematics, no_syst):
             "jetmass": hist.Hist(syst_axis, cats_axis, jetmass2D_axis, storage="weight", name="Counts"), # Selected jet mass
             "jetmsd": hist.Hist(syst_axis, cats_axis, jetmsd_axis, storage="weight", name="Counts"), # Selected jet softdrop mass
             "jetdy": hist.Hist(syst_axis, cats_axis, jetdy_axis, storage="weight", name="Counts"),
+            "chi":   hist.Hist(syst_axis, cats_axis, chi_axis,   storage="weight", name="Counts"),
             "jetmass1": hist.Hist(syst_axis, cats_axis, jetmass2D_axis, storage="weight", name="Counts"),
             "jetmsd1": hist.Hist(syst_axis, cats_axis, jetmsd_axis, storage="weight", name="Counts"),
             "dR_min_jet2": hist.Hist(syst_axis, cats_axis, jetdr_axis, ttbarmass2D_axis, storage="weight", name="Counts"),
@@ -111,4 +114,23 @@ def build_output_histograms(anacats, systematics, no_syst):
             "truthstudy": processor.defaultdict_accumulator(int),
         }
     )
+    if produce_ntuple:
+        output["ntuple"] = build_ntuple_accumulators()
     return output
+
+
+_NTUPLE_FLOAT_COLS = [
+    "jet0_pt", "jet0_eta", "jet0_phi", "jet0_msd", "jet0_tdisc",
+    "jet1_pt", "jet1_eta", "jet1_phi", "jet1_msd", "jet1_tdisc",
+    "ttbarmass", "ht", "dy", "chi", "weight",
+    "jet0_rapidity", "jet1_rapidity",
+]
+_NTUPLE_INT_COLS = ["anacat", "run", "lumi", "event"]
+
+
+def build_ntuple_accumulators():
+    acc = {col: processor.column_accumulator(np.array([], dtype=np.float32))
+           for col in _NTUPLE_FLOAT_COLS}
+    acc.update({col: processor.column_accumulator(np.array([], dtype=np.int64))
+                for col in _NTUPLE_INT_COLS})
+    return processor.dict_accumulator(acc)
