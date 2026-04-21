@@ -60,7 +60,7 @@ from python.functions import printTime, makeSaveDirectories
 %autoreload 2
 ```
 
-```python jupyter={"source_hidden": true}
+```python
 # ── Widgets for interactive configuration ─────────────────────────────────────
 import ipywidgets as widgets
 from IPython.display import display
@@ -101,32 +101,6 @@ def load_config():
     return dict(DEFAULTS)
 
 
-def save_config(_=None):
-    cfg = dict(
-        dataset=list(w_dataset.value),
-        signals=w_signals.value,
-        iov=w_iov.value,
-        era=list(w_era.value),
-        pt=list(w_pt.value),
-        mass=w_mass.value,
-        blind=w_blind.value,
-        bkgest=w_bkgest.value,
-        toptagger=w_toptagger.value,
-        redirector=w_redirector.value,
-        ttagWP=w_ttagWP.value,
-        btagger=w_btagger.value,
-        ht=w_ht.value,
-        noSyst=w_noSyst.value,
-        ntuple=w_ntuple.value,
-        dask=w_dask.value,
-        env=w_env.value,
-        test=w_test.value,
-        nocluster=w_nocluster.value,
-    )
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(cfg, f, indent=2)
-
-
 cfg = load_config()
 
 style = {"description_width": "80px"}
@@ -134,20 +108,22 @@ layout = widgets.Layout(width="210px")
 layout_wide = widgets.Layout(width="260px")
 
 _dataset_opts = [
-    "data",
-    "QCD",
-    "TTbar",
-    "ZPrime1",
-    "ZPrime10",
-    "ZPrime30",
-    "ZPrimeDM",
-    "RSGluon",
-    "ZPrimeLocal",
+    "data", "QCD", "TTbar",
+    "ZPrime1", "ZPrime10", "ZPrime30", "ZPrimeDM",
+    "RSGluon", "ZPrimeLocal",
 ]
 _era_opts = ["A", "B", "C", "D", "E", "F", "G", "H", "I"]
 _pt_opts = ["700to1000", "1000toInf"]
+_redirector_opts = [
+    ("Local (rootfiles/)", "rootfiles/"),
+    ("FNAL XRootD (root://cmsxrootd.fnal.gov/)", "root://cmsxrootd.fnal.gov/"),
+    ("CMS xcache (root://xcache/)", "root://xcache/"),
+    ("Winterfell (/mnt/data/cms/)", "/mnt/data/cms/"),
+]
+_redirector_vals = [v for _, v in _redirector_opts]
+_env_opts = ["casa", "lpc", "winterfell", "local"]
 
-# ── Datasets ──────────────────────────────────────────────────────────────────
+# ── Widget definitions ─────────────────────────────────────────────────────────
 w_dataset = widgets.SelectMultiple(
     options=_dataset_opts,
     value=tuple(v for v in cfg["dataset"] if v in _dataset_opts),
@@ -158,8 +134,6 @@ w_dataset = widgets.SelectMultiple(
 w_signals = widgets.Checkbox(
     value=cfg["signals"], description="Signals only", style=style, layout=layout
 )
-
-# ── IOV ───────────────────────────────────────────────────────────────────────
 w_iov = widgets.Dropdown(
     options=["2022", "2023", "2024"],
     value=cfg["iov"],
@@ -167,8 +141,6 @@ w_iov = widgets.Dropdown(
     style=style,
     layout=layout,
 )
-
-# ── Subsections ───────────────────────────────────────────────────────────────
 w_era = widgets.SelectMultiple(
     options=_era_opts,
     value=tuple(v for v in cfg["era"] if v in _era_opts),
@@ -190,8 +162,6 @@ w_mass = widgets.Text(
     style=style,
     layout=layout,
 )
-
-# ── Analysis options ──────────────────────────────────────────────────────────
 w_blind = widgets.Checkbox(
     value=cfg["blind"], description="Blind", style=style, layout=layout
 )
@@ -210,12 +180,8 @@ w_toptagger = widgets.Dropdown(
     layout=layout,
 )
 w_redirector = widgets.Dropdown(
-    options=[
-        ("Local (rootfiles/)", "rootfiles/"),
-        ("FNAL XRootD (root://cmsxrootd.fnal.gov/)", "root://cmsxrootd.fnal.gov/"),
-        ("CMS xcache (root://xcache/)", "root://xcache/"),
-    ],
-    value=cfg["redirector"],
+    options=_redirector_opts,
+    value=cfg["redirector"] if cfg["redirector"] in _redirector_vals else "rootfiles/",
     description="Redirector",
     style=style,
     layout=layout_wide,
@@ -247,14 +213,12 @@ w_noSyst = widgets.Checkbox(
 w_ntuple = widgets.Checkbox(
     value=cfg["ntuple"], description="Ntuple", style=style, layout=layout
 )
-
-# ── Run options ───────────────────────────────────────────────────────────────
 w_dask = widgets.Checkbox(
     value=cfg["dask"], description="Dask", style=style, layout=layout
 )
 w_env = widgets.Dropdown(
-    options=["casa", "lpc", "winterfell", "local", "C", "L", "W"],
-    value=cfg["env"],
+    options=_env_opts,
+    value=cfg["env"] if cfg["env"] in _env_opts else "lpc",
     description="Env",
     style=style,
     layout=layout,
@@ -266,53 +230,52 @@ w_nocluster = widgets.Checkbox(
     value=cfg["nocluster"], description="No cluster", style=style, layout=layout
 )
 
-# ── Auto-save on every change ─────────────────────────────────────────────────
-for _w in [
-    w_dataset,
-    w_signals,
-    w_iov,
-    w_era,
-    w_pt,
-    w_mass,
-    w_blind,
-    w_bkgest,
-    w_toptagger,
-    w_redirector,
-    w_ttagWP,
-    w_btagger,
-    w_ht,
-    w_noSyst,
-    w_ntuple,
-    w_dask,
-    w_env,
-    w_test,
-    w_nocluster,
-]:
-    _w.observe(save_config, names="value")
+# ── Central widget registry ────────────────────────────────────────────────────
+# To add a new config field: add it to DEFAULTS above and WIDGETS below.
+# save_config, build_args, and reset_to_defaults all derive from this dict.
+WIDGETS = {
+    "dataset":    w_dataset,
+    "signals":    w_signals,
+    "iov":        w_iov,
+    "era":        w_era,
+    "pt":         w_pt,
+    "mass":       w_mass,
+    "blind":      w_blind,
+    "bkgest":     w_bkgest,
+    "toptagger":  w_toptagger,
+    "redirector": w_redirector,
+    "ttagWP":     w_ttagWP,
+    "btagger":    w_btagger,
+    "ht":         w_ht,
+    "noSyst":     w_noSyst,
+    "ntuple":     w_ntuple,
+    "dask":       w_dask,
+    "env":        w_env,
+    "test":       w_test,
+    "nocluster":  w_nocluster,
+}
+
+_MULTI = widgets.SelectMultiple
 
 
-# ── Reset to defaults button ──────────────────────────────────────────────────
+def _widget_value(w):
+    return list(w.value) if isinstance(w, _MULTI) else w.value
+
+
+def save_config(_=None):
+    cfg = {k: _widget_value(w) for k, w in WIDGETS.items()}
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(cfg, f, indent=2)
+
+
 def reset_to_defaults(_):
-    w_dataset.value = tuple(DEFAULTS["dataset"])
-    w_signals.value = DEFAULTS["signals"]
-    w_iov.value = DEFAULTS["iov"]
-    w_era.value = tuple(DEFAULTS["era"])
-    w_pt.value = tuple(DEFAULTS["pt"])
-    w_mass.value = DEFAULTS["mass"]
-    w_blind.value = DEFAULTS["blind"]
-    w_bkgest.value = DEFAULTS["bkgest"]
-    w_toptagger.value = DEFAULTS["toptagger"]
-    w_redirector.value = DEFAULTS["redirector"]
-    w_ttagWP.value = DEFAULTS["ttagWP"]
-    w_btagger.value = DEFAULTS["btagger"]
-    w_ht.value = DEFAULTS["ht"]
-    w_noSyst.value = DEFAULTS["noSyst"]
-    w_ntuple.value = DEFAULTS["ntuple"]
-    w_dask.value = DEFAULTS["dask"]
-    w_env.value = DEFAULTS["env"]
-    w_test.value = DEFAULTS["test"]
-    w_nocluster.value = DEFAULTS["nocluster"]
+    for key, w in WIDGETS.items():
+        default = DEFAULTS[key]
+        w.value = tuple(default) if isinstance(w, _MULTI) else default
 
+
+for w in WIDGETS.values():
+    w.observe(save_config, names="value")
 
 btn_reset = widgets.Button(
     description="↺ Reset to Defaults",
@@ -329,32 +292,25 @@ col1 = widgets.VBox(
     layout=widgets.Layout(margin="0 8px 0 0"),
 )
 col2 = widgets.VBox(
-    [hdr("Subsections"), w_era, w_pt, w_mass], layout=widgets.Layout(margin="0 8px 0 0")
+    [hdr("Subsections"), w_era, w_pt, w_mass],
+    layout=widgets.Layout(margin="0 8px 0 0"),
 )
 col3 = widgets.VBox(
     [
         hdr("Analysis Options"),
-        w_blind,
-        w_bkgest,
-        w_toptagger,
-        w_redirector,
-        w_ttagWP,
-        w_btagger,
-        w_ht,
-        w_noSyst,
-        w_ntuple,
+        w_blind, w_bkgest, w_toptagger, w_redirector,
+        w_ttagWP, w_btagger, w_ht, w_noSyst, w_ntuple,
     ],
     layout=widgets.Layout(margin="0 8px 0 0"),
 )
 col4 = widgets.VBox([hdr("Run Options"), w_dask, w_env, w_test, w_nocluster, btn_reset])
 
 display(widgets.HBox([col1, col2, col3, col4]))
-_loaded = (
-    "restored from last session" if os.path.exists(CONFIG_FILE) else "using defaults"
-)
+_loaded = "restored from last session" if os.path.exists(CONFIG_FILE) else "using defaults"
 display(
     widgets.HTML(
-        f'<i style="font-size:0.82em; color:gray">Config {_loaded} · auto-saved to <code>.last_config.json</code> on each change.</i>'
+        f'<i style="font-size:0.82em; color:gray">Config {_loaded} · auto-saved to '
+        f'<code>.last_config.json</code> on each change.</i>'
     )
 )
 print("Adjust widgets above, then run the next cell to apply settings.")
@@ -369,32 +325,22 @@ def build_args():
     if w_signals.value:
         selected_datasets = list(default_signals)
 
-    mass_list = [m.strip() for m in w_mass.value.split(",") if m.strip()]
+    raw_mass = w_mass.value.strip()
+    mass_list = []
+    if raw_mass:
+        parts = [m.strip() for m in raw_mass.split(",")]
+        invalid = [p for p in parts if not p.isdigit()]
+        if invalid:
+            print(f"Warning: invalid mass entries ignored: {invalid}")
+        mass_list = [p for p in parts if p.isdigit()]
 
-    return SimpleNamespace(
-        dataset=selected_datasets,
-        iov=w_iov.value,
-        signals=w_signals.value,
-        era=list(w_era.value),
-        pt=list(w_pt.value),
-        mass=mass_list,
-        blind=w_blind.value,
-        bkgest=w_bkgest.value,
-        toptagger=w_toptagger.value,
-        redirector=w_redirector.value,
-        ttagWP=w_ttagWP.value,
-        btagger=w_btagger.value,
-        ht=w_ht.value,
-        noSyst=w_noSyst.value,
-        ntuple=w_ntuple.value,
-        dask=w_dask.value,
-        env=w_env.value,
-        test=w_test.value,
-        nocluster=w_nocluster.value,
-    )
+    cfg = {k: _widget_value(w) for k, w in WIDGETS.items()}
+    cfg["dataset"] = selected_datasets
+    cfg["mass"] = mass_list
+    return SimpleNamespace(**cfg)
 
 
-args = build_args()  
+args = build_args()
 print("------args------")
 for argname, value in vars(args).items():
     print(argname, "=", value)
@@ -402,19 +348,22 @@ print("----------------")
 ```
 
 ```python
+import subprocess
+
+
 def run_analysis(args):
     tic = time.time()
 
     savedir = f"outputs/dy/"
 
-    if args.dask and (args.env == "lpc" or args.env == "L"):
+    if args.dask and args.env == "lpc":
         from lpcjobqueue import LPCCondorCluster
 
     samples = args.dataset
     IOV = args.iov
-    useDeepAK8 = True if (args.toptagger == "deepak8") else False
-    useDeepCSV = True if (args.btagger == "deepcsv") else False
-    htCut = 1400.0 if (args.ht == "1400") else 950.0
+    useDeepAK8 = args.toptagger == "deepak8"
+    useDeepCSV = args.btagger == "deepcsv"
+    htCut = 1400.0 if args.ht == "1400" else 950.0
     dask_memory = "5GB"
     chunksize_dask = 100000
     chunksize_futures = 200000
@@ -438,7 +387,6 @@ def run_analysis(args):
     if args.bkgest == "2dalphabet":
         systematics.append("transferFunction")
 
-    # systematics = ['nominal', 'jes', 'pileup']
     ttagcats = ["at", "2t"]
     ycats = ["cen", "fwd"]
 
@@ -447,10 +395,6 @@ def run_analysis(args):
 
     with open("out.log", "w") as f:
         print("\n" + date.today().isoformat(), file=f)
-        # print('\n------args------', file=f)
-        # for argname, value in vars(args).items():
-        #     print(argname, '=', value, file=f)
-        # print('----------------\n', file=f)
         print("categories =", label_map, file=f)
         print("\n", file=f)
         if not args.noSyst:
@@ -463,12 +407,7 @@ def run_analysis(args):
         print("systematics =", systematics)
     print("----------------\n")
 
-    if args.env == "casa" or args.env == "C":
-        redirector = "root://xcache/"
-    elif args.env == "winterfell" or args.env == "W":
-        redirector = "/mnt/data/cms/"
-    else:
-        redirector = args.redirector
+    redirector = args.redirector
 
     jsonfiles = {
         "data": "data/nanoAOD/data.json",
@@ -490,38 +429,24 @@ def run_analysis(args):
         os.makedirs(savedir + "logs/")
         os.makedirs(savedir + "scale/")
         os.makedirs(savedir + "twodalphabet/")
-        os.popen(
-            "cp ttbarprocessor.py "
-            + savedir
-            + "logs/ttbarprocessor_"
-            + date.today().isoformat().replace("-", "")
-            + ".py"
+        subprocess.run(
+            ["cp", "ttbarprocessor.py",
+             savedir + "logs/ttbarprocessor_" + date.today().isoformat().replace("-", "") + ".py"],
+            check=True,
         )
-        os.popen("cat out.log >> " + savedir + "logs/ttbarprocessor_diff.txt")
+        subprocess.run(f"cat out.log >> {savedir}logs/ttbarprocessor_diff.txt", shell=True, check=True)
     else:
         for f in os.listdir(savedir + "logs/"):
             if "ttbarprocessor" in f and "py" in f:
-                os.popen("cat out.log >> " + savedir + "logs/ttbarprocessor_diff.txt")
-                print(
-                    "diff ttbarprocessor.py "
-                    + savedir
-                    + "logs/"
-                    + f
-                    + " >> "
-                    + savedir
-                    + "logs/ttbarprocessor_diff.txt"
+                subprocess.run(f"cat out.log >> {savedir}logs/ttbarprocessor_diff.txt", shell=True, check=True)
+                diff_result = subprocess.run(
+                    ["diff", "ttbarprocessor.py", savedir + "logs/" + f],
+                    capture_output=True, text=True,
                 )
-                os.popen(
-                    "diff ttbarprocessor.py "
-                    + savedir
-                    + "logs/"
-                    + f
-                    + " >> "
-                    + savedir
-                    + "logs/ttbarprocessor_diff.txt"
-                )
+                with open(savedir + "logs/ttbarprocessor_diff.txt", "a") as df:
+                    df.write(diff_result.stdout)
 
-        if not os.path.exists(savedir):
+        if not os.path.exists(savedir + "scale/"):
             os.makedirs(savedir + "scale/")
         if not os.path.exists(savedir + "twodalphabet/"):
             os.makedirs(savedir + "twodalphabet/")
@@ -530,6 +455,7 @@ def run_analysis(args):
 
     output = None
     metrics = None
+    savefilenames = []
 
     for sample in samples:
         skipbadfiles = False
@@ -601,12 +527,9 @@ def run_analysis(args):
                 if args.test:
                     savefilename = savefilename.replace(".coffea", "_test.coffea")
 
-                if not args.dask:  # using local futures
-                    # print(fileset)
+                if not args.dask:
                     runner = processor.Runner(
-                        executor=processor.FuturesExecutor(
-                            workers=nworkers,
-                        ),
+                        executor=processor.FuturesExecutor(workers=nworkers),
                         schema=NanoAODSchema,
                         chunksize=chunksize_futures,
                         maxchunks=maxchunks,
@@ -634,7 +557,7 @@ def run_analysis(args):
                         ),
                     )
                 else:
-                    if args.dask and (args.env == "lpc" or args.env == "L"):
+                    if args.env == "lpc":
                         if args.nocluster:
                             cluster = None
                         else:
@@ -644,7 +567,7 @@ def run_analysis(args):
                                 scheduler_options={"dashboard_address": ":8787"},
                             )
                             cluster.adapt(minimum=1, maximum=100)
-                    elif args.dask and (args.env == "casa" or args.env == "C"):
+                    elif args.env == "casa":
                         if args.nocluster:
                             cluster = None
                         else:
@@ -652,10 +575,10 @@ def run_analysis(args):
 
                             cluster = CoffeaCasaCluster(memory=dask_memory)
                             cluster.adapt(minimum=4, maximum=400)
-                            client = Client(cluster)
+                            _setup_client = Client(cluster)
                             from distributed.diagnostics.plugin import UploadDirectory
 
-                            client.register_worker_plugin(
+                            _setup_client.register_worker_plugin(
                                 UploadDirectory(
                                     os.path.join(repo_root, "data"),
                                     restart=True,
@@ -663,9 +586,7 @@ def run_analysis(args):
                                 ),
                                 nanny=True,
                             )
-                            from distributed.diagnostics.plugin import UploadDirectory
-
-                            client.register_worker_plugin(
+                            _setup_client.register_worker_plugin(
                                 UploadDirectory(
                                     os.path.join(repo_root, "python"),
                                     restart=True,
@@ -673,11 +594,10 @@ def run_analysis(args):
                                 ),
                                 nanny=True,
                             )
-
-                            client.upload_file(
+                            _setup_client.upload_file(
                                 os.path.join(repo_root, "ttbarprocessor.py")
                             )
-
+                            _setup_client.close()
                     else:
                         cluster = dask.distributed.LocalCluster(
                             n_workers=nworkers,
@@ -685,12 +605,6 @@ def run_analysis(args):
                             scheduler_port=0,
                             dashboard_address=":8787",
                         )
-
-                    upload_to_dask = [
-                        "data",
-                        "python",
-                        "ttbarprocessor.py",
-                    ]
 
                     with Client(cluster) as client:
                         run_instance = processor.Runner(
@@ -702,19 +616,6 @@ def run_analysis(args):
                             chunksize=chunksize_dask,
                             maxchunks=maxchunks,
                         )
-
-                        # if args.nocluster:
-                        #     worker_toc = time.time()
-                        #     print('Waiting for 4 workers...')
-                        #     client.wait_for_workers(4)
-                        #     worker_tic = time.time()
-                        # else:
-                        #     worker_toc = time.time()
-                        #     print('Waiting for at least one worker...')
-                        #     client.wait_for_workers(1)
-                        #     worker_tic = time.time()
-
-                        # print(f'time to wait for worker = {int(worker_tic - worker_toc)}s')
 
                         output, metrics = run_instance(
                             fileset,
@@ -734,19 +635,17 @@ def run_analysis(args):
                             ),
                         )
 
-                        client.shutdown()
-                        del cluster
-
                 output["analysisCategories"] = label_map
                 util.save(output, savefilename)
                 print("saving", savefilename)
+                savefilenames.append((savefilename, sample))
 
     elapsed = time.time() - tic
     printTime(elapsed)
     if metrics is not None:
         print(f"Events/s: {metrics['entries'] / elapsed:.0f}")
 
-    return {"elapsed": elapsed, "metrics": metrics, "output": output}
+    return {"elapsed": elapsed, "metrics": metrics, "output": output, "savefilenames": savefilenames}
 ```
 
 ```python
@@ -756,7 +655,15 @@ run_summary = run_analysis(args)
 ```
 
 ```python
-!python write_ntuple.py outputs/dy/TTbar_2024inclusive_noSyst.coffea TTbar_2024_ntuple.root ttbar
+import subprocess, os
+
+if args.ntuple:
+    for coffea_file, sample in run_summary["savefilenames"]:
+        ntuple_dir = os.path.join(os.path.dirname(coffea_file), "ntuples")
+        os.makedirs(ntuple_dir, exist_ok=True)
+        root_file = os.path.join(ntuple_dir, os.path.basename(coffea_file).replace(".coffea", "_ntuple.root"))
+        print(f"writing ntuple: {coffea_file} -> {root_file}")
+        subprocess.run(["python", "write_ntuple.py", coffea_file, root_file, sample], check=True)
 ```
 
 ```python

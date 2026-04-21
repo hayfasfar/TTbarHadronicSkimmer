@@ -4,6 +4,13 @@ import numpy as np
 from corrections import GetJECUncertainties
 from functions import getRapidity
 
+# AK4 jet selection thresholds (used in both HT sum and baseline masks)
+_AK4_PT_MIN  = 30    # GeV
+_AK4_ETA_MAX = 3.0
+
+# FatJet (AK8) acceptance boundary — applied on rapidity, not pseudo-rapidity
+_AK8_RAPIDITY_MAX = 2.4
+
 
 class Run3JetManager:
     """Utility class to keep jet/fatjet preparation, corrections, and baseline selections together."""
@@ -35,7 +42,7 @@ class Run3JetManager:
         return fatjets, jets
 
     def build_corrections(self, events, is_data):
-        no_corrections = ("jes" not in self.systematics and "jer" not in self.systematics)
+        no_corrections = "jes" not in self.systematics and "jer" not in self.systematics
         if no_corrections or self.no_syst or is_data:
             return None
 
@@ -45,31 +52,27 @@ class Run3JetManager:
 
         corrections = []
         if "jes" in self.systematics:
-            corrections.extend(
-                [
-                    ({"Jet": corrected_jets, "FatJet": corrected_fatjets}, "nominal"),
-                    ({"Jet": corrected_jets.JES_jes.up, "FatJet": corrected_fatjets.JES_jes.up}, "jesUp"),
-                    ({"Jet": corrected_jets.JES_jes.down, "FatJet": corrected_fatjets.JES_jes.down}, "jesDown"),
-                ]
-            )
+            corrections.extend([
+                ({"Jet": corrected_jets,             "FatJet": corrected_fatjets},             "nominal"),
+                ({"Jet": corrected_jets.JES_jes.up,  "FatJet": corrected_fatjets.JES_jes.up},  "jesUp"),
+                ({"Jet": corrected_jets.JES_jes.down,"FatJet": corrected_fatjets.JES_jes.down}, "jesDown"),
+            ])
         if "jer" in self.systematics:
             if not corrections:
                 corrections.append(({"Jet": corrected_jets, "FatJet": corrected_fatjets}, "nominal"))
-            corrections.extend(
-                [
-                    ({"Jet": corrected_jets.JER.up, "FatJet": corrected_fatjets.JER.up}, "jerUp"),
-                    ({"Jet": corrected_jets.JER.down, "FatJet": corrected_fatjets.JER.down}, "jerDown"),
-                ]
-            )
+            corrections.extend([
+                ({"Jet": corrected_jets.JER.up,  "FatJet": corrected_fatjets.JER.up},  "jerUp"),
+                ({"Jet": corrected_jets.JER.down, "FatJet": corrected_fatjets.JER.down}, "jerDown"),
+            ])
 
         return corrections
 
     def prepare_analysis_objects(self, events, is_data):
-        fatjets = self._add_p4(events.FatJet)
-        subjets = self._add_p4(events.SubJet)
-        jets = self._add_p4(events.Jet)
-        genjets = None
-        genjetak8 = None
+        fatjets     = self._add_p4(events.FatJet)
+        subjets     = self._add_p4(events.SubJet)
+        jets        = self._add_p4(events.Jet)
+        genjets     = None
+        genjetak8   = None
         subgenjetak8 = None
         if not is_data:
             genjets = self._add_p4(events.GenJet)
@@ -80,22 +83,28 @@ class Run3JetManager:
         return fatjets, subjets, jets, genjets, genjetak8, subgenjetak8
 
     def baseline_masks(self, events, fatjets, jets):
-        ht_mask = ak.sum(jets[(jets.pt > 30) & (np.abs(jets.eta) < 3.0)].pt, axis=1) > self.ht_cut
-        #jetid_mask = ak.any((fatjets.jetId > 1), axis=1)
+        ht_mask = (
+            ak.sum(jets[(jets.pt > _AK4_PT_MIN) & (np.abs(jets.eta) < _AK4_ETA_MAX)].pt, axis=1)
+            > self.ht_cut
+        )
 
-        #fatjets_jetid = fatjets[fatjets.jetId > 1]
-        jetkin = (fatjets.pt > self.ak8_pt_min) & (np.abs(getRapidity(fatjets.p4)) < 2.4)
-        jetkin_mask = ak.any(jetkin, axis=1)
+        # JetID disabled: Run-3 NanoAOD working point not yet centrally validated.
+
+        jetkin = (fatjets.pt > self.ak8_pt_min) & (np.abs(getRapidity(fatjets.p4)) < _AK8_RAPIDITY_MAX)
+
+        # jetkin_mask: ≥1 FatJet passes kinematics — used as a PackedSelection cut.
+        # twofat_mask: ≥2 FatJets survive after filtering — the actual physics requirement.
+        # Both are needed: jetkin_mask enters the selection before the filtered collection exists.
+        jetkin_mask      = ak.any(jetkin, axis=1)
         fatjets_selected = fatjets[jetkin]
+        twofat_mask      = ak.num(fatjets_selected) > 1
 
-        twofat_mask = ak.num(fatjets_selected) > 1
         event_mask = ht_mask & jetkin_mask & twofat_mask
 
         masks = {
-            "htCut": ht_mask,
-            #"jetid": jetid_mask,
-            "jetkincut": jetkin_mask,
+            "htCut":      ht_mask,
+            "jetkincut":  jetkin_mask,
             "twoFatJets": twofat_mask,
-            "event": event_mask,
+            "event":      event_mask,
         }
         return fatjets_selected, masks

@@ -17,7 +17,7 @@ jupyter:
 
 Plot distributions from the flat ROOT TTree produced by `write_ntuple.py`.
 
-```python jupyter={"source_hidden": true}
+```python
 import sys
 sys.path.insert(0, "..")
 
@@ -28,13 +28,22 @@ import hep_plot
 
 hep_plot.setup(era="2024", outdir="outputs/plots", formats=("pdf", "png"))
 
-NTUPLE_FILE = "../TTbar_2024_ntuple.root"
-TREE_NAME   = "ttbar"
+# ── Available ntuple files — uncomment the desired sample ─────────────────────
+# NTUPLE_FILE = "../outputs/dy/ntuples/data_2024C_noSyst_ntuple.root"; TREE_NAME = "data"
+# NTUPLE_FILE = "../outputs/dy/ntuples/data_2024D_noSyst_ntuple.root"; TREE_NAME = "data"
+# NTUPLE_FILE = "../outputs/dy/ntuples/data_2024E_noSyst_ntuple.root"; TREE_NAME = "data"
+# NTUPLE_FILE = "../outputs/dy/ntuples/data_2024F_noSyst_ntuple.root"; TREE_NAME = "data"
+# NTUPLE_FILE = "../outputs/dy/ntuples/data_2024G_noSyst_ntuple.root"; TREE_NAME = "data"
+# NTUPLE_FILE = "../outputs/dy/ntuples/data_2024H_noSyst_ntuple.root"; TREE_NAME = "data"
+# NTUPLE_FILE = "../outputs/dy/ntuples/data_2024I_noSyst_ntuple.root"; TREE_NAME = "data"
+# NTUPLE_FILE = "../outputs/dy/ntuples/QCD_2024inclusive_noSyst_ntuple.root";  TREE_NAME = "QCD"
+NTUPLE_FILE   = "../outputs/dy/ntuples/TTbar_2024inclusive_noSyst_ntuple.root"; TREE_NAME = "TTbar"
+# NTUPLE_FILE = "../outputs/dy/ntuples/ZPrime4000_1_2024_noSyst_ntuple.root";  TREE_NAME = "ZPrime1"
 
 CAT_LABELS = {0: "at_cen", 1: "at_fwd", 2: "2t_cen", 3: "2t_fwd"}
 ```
 
-```python jupyter={"source_hidden": true}
+```python
 with uproot.open(NTUPLE_FILE) as f:
     arrays = f[TREE_NAME].arrays(library="np")
 
@@ -129,7 +138,7 @@ hep_plot.quick_label(xlabel=r"Jet$_0\ p_T$ [GeV]", ylabel=r"$m_{t\bar{t}}$ [GeV]
 hep_plot.show("jet0_pt_vs_mttbar_2tag")
 ```
 
-```python jupyter={"source_hidden": true}
+```python
 # ── 2D: jet0_msd vs jet1_msd (signal region) ──────────────────────────────────
 fig, ax = plt.subplots()
 
