@@ -15,6 +15,7 @@ from collections import defaultdict
 import sys
 import os, psutil
 import copy
+import hist
 import scipy.stats as ss
 import numpy as np
 import pandas as pd
@@ -57,6 +58,16 @@ _DPHI_CUT        = 2.1   # min |Δφ| between the two leading FatJets (back-to-b
 _DR_AK8          = 0.8   # standard AK8 cone radius used for dR matching
 _DR_AK4          = 1.2   # dR cone for AK4 jets "near" a top (larger than the AK8 cone)
 _DR_NEARBY_INNER = 0.4   # inner radius of the AK4-near-AK8 annulus
+
+_LUMI_PB = {
+    '2016APV': 19800.,
+    '2016':    16120.,
+    '2016all': 35920.,
+    '2017':    41530.,
+    '2018':    59740.,
+    '2023':    27000.,
+    '2024':    115000.,
+}
 
 # Per-IOV top-tagger score thresholds.
 # Run-3 uses globalParT3; these keys are historically called "deepAK8" in the code.
@@ -150,6 +161,7 @@ class TTbarResProcessor(processor.ProcessorABC):
         anacats=['2t0bcen'],
         debug=False,
         produce_ntuple=False,
+        sample_metadata=None,
     ):
         self.iov = iov
         self.htCut = htCut
@@ -168,6 +180,7 @@ class TTbarResProcessor(processor.ProcessorABC):
         self.blinding = blinding
         self.debug = debug
         self.produce_ntuple = produce_ntuple
+        self.sample_metadata = copy.deepcopy(sample_metadata or {})
 
         self.logger = Logger(mode='debug' if debug else 'info')
 
@@ -317,6 +330,38 @@ class TTbarResProcessor(processor.ProcessorABC):
         output['jet1_eta'].fill(    **kw, jeteta=jeteta1[icat],         weight=w)
         output['jet1_phi'].fill(    **kw, jetphi=jetphi1[icat],         weight=w)
         output['jet1_rapidity'].fill(**kw, jety=jety1[icat],            weight=w)
+
+    def _build_normalization_metadata(self, sumw_raw, sumw2_raw, scale_factor, applied, reason=None):
+        sample_metadata = copy.deepcopy(self.sample_metadata)
+        year = str(sample_metadata.get('year', self.iov))
+        lumi_pb = _LUMI_PB.get(year)
+
+        normalization = {
+            'applied': bool(applied),
+            'sample': sample_metadata.get('sample'),
+            'subsample': sample_metadata.get('subsample'),
+            'year': year,
+            'is_mc': bool(sample_metadata.get('is_mc', False)),
+            'xsec_pb': sample_metadata.get('xsec_pb'),
+            'lumi_pb': lumi_pb,
+            'sumw_raw': float(sumw_raw),
+            'sumw2_raw': float(sumw2_raw),
+            'scale_factor': float(scale_factor),
+        }
+        if reason is not None:
+            normalization['reason'] = reason
+
+        return sample_metadata, normalization
+
+    @staticmethod
+    def _build_scaled_cutflow(cutflow, scale_factor):
+        scaled_cutflow = {}
+        for key, value in cutflow.items():
+            if key == 'sumw2':
+                scaled_cutflow[key] = float(value) * (scale_factor ** 2)
+            else:
+                scaled_cutflow[key] = float(value) * scale_factor
+        return scaled_cutflow
 
     @property
     def accumulator(self):
@@ -780,4 +825,50 @@ class TTbarResProcessor(processor.ProcessorABC):
 
     def postprocess(self, accumulator):
         logger.debug('memory:%s: finish processor:%s', time.time(), get_memory_usage())
+        sample_metadata = copy.deepcopy(self.sample_metadata)
+        cutflow = accumulator.get('cutflow', {})
+        sumw_raw = float(cutflow.get('sumw', 0.0))
+        sumw2_raw = float(cutflow.get('sumw2', 0.0))
+
+        scale_factor = 1.0
+        applied = False
+        reason = None
+
+        xsec_pb = sample_metadata.get('xsec_pb')
+        is_mc = bool(sample_metadata.get('is_mc', False))
+        year = str(sample_metadata.get('year', self.iov))
+        lumi_pb = _LUMI_PB.get(year)
+
+        if not sample_metadata:
+            reason = 'missing_sample_metadata'
+        elif not is_mc:
+            reason = 'data_sample'
+        elif xsec_pb is None:
+            reason = 'missing_xsec_pb'
+        elif lumi_pb is None:
+            reason = 'missing_lumi_pb'
+        elif sumw_raw == 0.0:
+            reason = 'zero_sumw'
+        else:
+            scale_factor = lumi_pb * float(xsec_pb) / sumw_raw
+            applied = True
+
+            for key, value in list(accumulator.items()):
+                if isinstance(value, hist.Hist):
+                    accumulator[key] = value * scale_factor
+
+            if 'ntuple' in accumulator and 'weight' in accumulator['ntuple']:
+                scaled_weight = (accumulator['ntuple']['weight'].value * scale_factor).astype(np.float32)
+                accumulator['ntuple']['weight'] = processor.column_accumulator(scaled_weight)
+
+        sample_metadata, normalization = self._build_normalization_metadata(
+            sumw_raw=sumw_raw,
+            sumw2_raw=sumw2_raw,
+            scale_factor=scale_factor,
+            applied=applied,
+            reason=reason,
+        )
+        accumulator['sample_metadata'] = sample_metadata
+        accumulator['normalization'] = normalization
+        accumulator['cutflow_scaled'] = self._build_scaled_cutflow(cutflow, scale_factor)
         return accumulator

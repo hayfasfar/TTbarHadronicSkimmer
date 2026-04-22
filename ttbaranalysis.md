@@ -6,9 +6,9 @@ jupyter:
       extension: .md
       format_name: markdown
       format_version: '1.3'
-      jupytext_version: 1.19.0
+      jupytext_version: 1.19.1
   kernelspec:
-    display_name: Python 3 (ipykernel)
+    display_name: coffea_latest
     language: python
     name: python3
 ---
@@ -108,9 +108,15 @@ layout = widgets.Layout(width="210px")
 layout_wide = widgets.Layout(width="260px")
 
 _dataset_opts = [
-    "data", "QCD", "TTbar",
-    "ZPrime1", "ZPrime10", "ZPrime30", "ZPrimeDM",
-    "RSGluon", "ZPrimeLocal",
+    "data",
+    "QCD",
+    "TTbar",
+    "ZPrime1",
+    "ZPrime10",
+    "ZPrime30",
+    "ZPrimeDM",
+    "RSGluon",
+    "ZPrimeLocal",
 ]
 _era_opts = ["A", "B", "C", "D", "E", "F", "G", "H", "I"]
 _pt_opts = ["700to1000", "1000toInf"]
@@ -234,25 +240,25 @@ w_nocluster = widgets.Checkbox(
 # To add a new config field: add it to DEFAULTS above and WIDGETS below.
 # save_config, build_args, and reset_to_defaults all derive from this dict.
 WIDGETS = {
-    "dataset":    w_dataset,
-    "signals":    w_signals,
-    "iov":        w_iov,
-    "era":        w_era,
-    "pt":         w_pt,
-    "mass":       w_mass,
-    "blind":      w_blind,
-    "bkgest":     w_bkgest,
-    "toptagger":  w_toptagger,
+    "dataset": w_dataset,
+    "signals": w_signals,
+    "iov": w_iov,
+    "era": w_era,
+    "pt": w_pt,
+    "mass": w_mass,
+    "blind": w_blind,
+    "bkgest": w_bkgest,
+    "toptagger": w_toptagger,
     "redirector": w_redirector,
-    "ttagWP":     w_ttagWP,
-    "btagger":    w_btagger,
-    "ht":         w_ht,
-    "noSyst":     w_noSyst,
-    "ntuple":     w_ntuple,
-    "dask":       w_dask,
-    "env":        w_env,
-    "test":       w_test,
-    "nocluster":  w_nocluster,
+    "ttagWP": w_ttagWP,
+    "btagger": w_btagger,
+    "ht": w_ht,
+    "noSyst": w_noSyst,
+    "ntuple": w_ntuple,
+    "dask": w_dask,
+    "env": w_env,
+    "test": w_test,
+    "nocluster": w_nocluster,
 }
 
 _MULTI = widgets.SelectMultiple
@@ -298,19 +304,28 @@ col2 = widgets.VBox(
 col3 = widgets.VBox(
     [
         hdr("Analysis Options"),
-        w_blind, w_bkgest, w_toptagger, w_redirector,
-        w_ttagWP, w_btagger, w_ht, w_noSyst, w_ntuple,
+        w_blind,
+        w_bkgest,
+        w_toptagger,
+        w_redirector,
+        w_ttagWP,
+        w_btagger,
+        w_ht,
+        w_noSyst,
+        w_ntuple,
     ],
     layout=widgets.Layout(margin="0 8px 0 0"),
 )
 col4 = widgets.VBox([hdr("Run Options"), w_dask, w_env, w_test, w_nocluster, btn_reset])
 
 display(widgets.HBox([col1, col2, col3, col4]))
-_loaded = "restored from last session" if os.path.exists(CONFIG_FILE) else "using defaults"
+_loaded = (
+    "restored from last session" if os.path.exists(CONFIG_FILE) else "using defaults"
+)
 display(
     widgets.HTML(
         f'<i style="font-size:0.82em; color:gray">Config {_loaded} · auto-saved to '
-        f'<code>.last_config.json</code> on each change.</i>'
+        f"<code>.last_config.json</code> on each change.</i>"
     )
 )
 print("Adjust widgets above, then run the next cell to apply settings.")
@@ -349,6 +364,48 @@ print("----------------")
 
 ```python
 import subprocess
+
+
+def _build_sample_metadata(sample, subsection, iov, metadata):
+    sample_metadata = {
+        "sample": sample,
+        "subsample": subsection or sample,
+        "year": iov,
+        "is_mc": not (("data" in sample.lower()) or ("singlemu" in sample.lower())),
+    }
+    sample_metadata.update(metadata)
+    return sample_metadata
+
+
+def _parse_manifest_entry(sample, subsection, iov, entry):
+    if isinstance(entry, dict) and "files" in entry:
+        files = entry["files"]
+        metadata = dict(entry.get("metadata", {}))
+    else:
+        files = entry
+        metadata = {}
+
+    return list(files), _build_sample_metadata(sample, subsection, iov, metadata)
+
+
+def _collect_manifest_sections(sample, iov, manifest, subsections):
+    iov_entry = manifest[iov]
+
+    if isinstance(iov_entry, dict) and "files" not in iov_entry:
+        requested_sections = subsections if subsections else list(iov_entry.keys())
+        entries = []
+        for subsection in requested_sections:
+            if subsection not in iov_entry:
+                print(f"{subsection} not in {sample} {iov}")
+                continue
+            files, metadata = _parse_manifest_entry(
+                sample, subsection, iov, iov_entry[subsection]
+            )
+            entries.append((subsection, files, metadata))
+        return entries
+
+    files, metadata = _parse_manifest_entry(sample, "", iov, iov_entry)
+    return [("", files, metadata)]
 
 
 def run_analysis(args):
@@ -418,7 +475,7 @@ def run_analysis(args):
         "ZPrime30": "data/nanoAOD/ZPrime30.json",
         "ZPrimeDM": "data/nanoAOD/ZPrimeDM.json",
         "RSGluon": "data/nanoAOD/RSGluon.json",
-        "ZPrimeLocal": "data/nanoAOD/local.json",
+        "ZPrimeLocal": "data/nanoAOD/local_xsec_test.json",
     }
 
     repo_root = os.path.abspath(os.getcwd())
@@ -430,18 +487,33 @@ def run_analysis(args):
         os.makedirs(savedir + "scale/")
         os.makedirs(savedir + "twodalphabet/")
         subprocess.run(
-            ["cp", "ttbarprocessor.py",
-             savedir + "logs/ttbarprocessor_" + date.today().isoformat().replace("-", "") + ".py"],
+            [
+                "cp",
+                "ttbarprocessor.py",
+                savedir
+                + "logs/ttbarprocessor_"
+                + date.today().isoformat().replace("-", "")
+                + ".py",
+            ],
             check=True,
         )
-        subprocess.run(f"cat out.log >> {savedir}logs/ttbarprocessor_diff.txt", shell=True, check=True)
+        subprocess.run(
+            f"cat out.log >> {savedir}logs/ttbarprocessor_diff.txt",
+            shell=True,
+            check=True,
+        )
     else:
         for f in os.listdir(savedir + "logs/"):
             if "ttbarprocessor" in f and "py" in f:
-                subprocess.run(f"cat out.log >> {savedir}logs/ttbarprocessor_diff.txt", shell=True, check=True)
+                subprocess.run(
+                    f"cat out.log >> {savedir}logs/ttbarprocessor_diff.txt",
+                    shell=True,
+                    check=True,
+                )
                 diff_result = subprocess.run(
                     ["diff", "ttbarprocessor.py", savedir + "logs/" + f],
-                    capture_output=True, text=True,
+                    capture_output=True,
+                    text=True,
                 )
                 with open(savedir + "logs/ttbarprocessor_diff.txt", "a") as df:
                     df.write(diff_result.stdout)
@@ -473,6 +545,7 @@ def run_analysis(args):
         elif args.env == "casa":
             if not args.nocluster:
                 from coffea_casa import CoffeaCasaCluster
+
                 cluster = CoffeaCasaCluster(memory=dask_memory)
                 cluster.adapt(minimum=4, maximum=400)
         else:
@@ -485,12 +558,17 @@ def run_analysis(args):
         client = Client(cluster)
         if args.env == "casa" and not args.nocluster:
             from distributed.diagnostics.plugin import UploadDirectory
+
             client.register_worker_plugin(
-                UploadDirectory(os.path.join(repo_root, "data"), restart=True, update_path=True),
+                UploadDirectory(
+                    os.path.join(repo_root, "data"), restart=True, update_path=True
+                ),
                 nanny=True,
             )
             client.register_worker_plugin(
-                UploadDirectory(os.path.join(repo_root, "python"), restart=True, update_path=True),
+                UploadDirectory(
+                    os.path.join(repo_root, "python"), restart=True, update_path=True
+                ),
                 nanny=True,
             )
             client.upload_file(os.path.join(repo_root, "ttbarprocessor.py"))
@@ -501,31 +579,25 @@ def run_analysis(args):
 
         with open(inputfile) as json_file:
             subsections = args.era + args.mass + args.pt
-            data = json.load(json_file)
+            manifest = json.load(json_file)
 
-            filedict = {}
-
-            try:
-                data[IOV].keys()
-
-                if len(subsections) > 0:
-                    for s in subsections:
-                        if s in data[IOV].keys():
-                            filedict[s] = data[IOV][s]
-                        else:
-                            print(f"{s} not in {sample} {IOV}")
-                else:
-                    filedict = data[IOV]
-            except Exception:
-                filedict[""] = data[IOV]
-
-            for subsection, files in filedict.items():
+            for subsection, files, sample_metadata in _collect_manifest_sections(
+                sample=sample,
+                iov=IOV,
+                manifest=manifest,
+                subsections=subsections,
+            ):
                 files = [redirector + f for f in files]
                 if args.test:
                     files = [files[int(len(files) / 2)]]
                     maxchunks = 1
 
-                fileset = {sample: files}
+                fileset = {
+                    sample: {
+                        "files": files,
+                        "metadata": sample_metadata,
+                    }
+                }
 
                 print(files[0])
 
@@ -589,6 +661,7 @@ def run_analysis(args):
                             blinding=args.blind,
                             debug=True,
                             produce_ntuple=args.ntuple,
+                            sample_metadata=sample_metadata,
                         ),
                     )
                 else:
@@ -617,6 +690,7 @@ def run_analysis(args):
                             systematics=systematics,
                             blinding=args.blind,
                             produce_ntuple=args.ntuple,
+                            sample_metadata=sample_metadata,
                         ),
                     )
 
@@ -635,7 +709,12 @@ def run_analysis(args):
     if cluster is not None:
         cluster.close()
 
-    return {"elapsed": elapsed, "metrics": metrics, "output": output, "savefilenames": savefilenames}
+    return {
+        "elapsed": elapsed,
+        "metrics": metrics,
+        "output": output,
+        "savefilenames": savefilenames,
+    }
 ```
 
 ```python
@@ -656,9 +735,13 @@ if args.ntuple:
     for coffea_file, sample in run_summary["savefilenames"]:
         ntuple_dir = os.path.join(os.path.dirname(coffea_file), "ntuples")
         os.makedirs(ntuple_dir, exist_ok=True)
-        root_file = os.path.join(ntuple_dir, os.path.basename(coffea_file).replace(".coffea", "_ntuple.root"))
+        root_file = os.path.join(
+            ntuple_dir, os.path.basename(coffea_file).replace(".coffea", "_ntuple.root")
+        )
         print(f"writing ntuple: {coffea_file} -> {root_file}")
-        subprocess.run(["python", "write_ntuple.py", coffea_file, root_file, sample], check=True)
+        subprocess.run(
+            ["python", "write_ntuple.py", coffea_file, root_file, sample], check=True
+        )
 ```
 
 ```python
@@ -669,11 +752,11 @@ for key in output:
 ```
 
 ```python
-output["cutflow"]
+output["normalization"]["xsec_pb"]
 ```
 
 ```python
-output["ttbarmass"].project('ttbarmass').plot()
+output["ttbarmass"].project("ttbarmass").plot()
 ```
 
 ```python
