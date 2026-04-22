@@ -25,6 +25,7 @@ import json
 import logging
 import psutil
 import time
+import warnings
 
 import awkward as ak
 
@@ -379,14 +380,26 @@ class TTbarResProcessor(processor.ProcessorABC):
 
         # --- trigger ---
         selection = PackedSelection()
-        try:
-            selection.add('trigger', (
-                events.HLT[self.triggernames[self.iov][0]]
-                | events.HLT[self.triggernames[self.iov][1]]
-            ))
-        except (KeyError, IndexError):
-            # second trigger path absent in some datasets/IOVs
-            selection.add('trigger', events.HLT[self.triggernames[self.iov][0]])
+        trig_paths = self.triggernames[self.iov]
+
+        if 'HLT' not in events.fields:
+            warnings.warn(
+                f"HLT branch missing for IOV {self.iov}; accepting all events."
+            )
+            selection.add('trigger', np.ones(len(events), dtype=bool))
+        else:
+            available = [p for p in trig_paths if p in events.HLT.fields]
+            if not available:
+                warnings.warn(
+                    f"None of {trig_paths} present in HLT for IOV {self.iov}; "
+                    "accepting all events."
+                )
+                selection.add('trigger', np.ones(len(events), dtype=bool))
+            else:
+                mask = events.HLT[available[0]]
+                for p in available[1:]:
+                    mask = mask | events.HLT[p]
+                selection.add('trigger', mask)
 
         # --- build jet collections ---
         FatJets, SubJets, Jets, GenJets, GenJetAK8, SubGenJetAK8 = (
