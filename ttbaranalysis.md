@@ -456,6 +456,44 @@ def run_analysis(args):
     output = None
     metrics = None
     savefilenames = []
+    nworkers = 1 if args.test else 4
+
+    # ── Dask cluster/client: created once and reused across all samples ────────
+    client = None
+    cluster = None
+    if args.dask:
+        if args.env == "lpc":
+            if not args.nocluster:
+                cluster = LPCCondorCluster(
+                    memory=dask_memory,
+                    transfer_input_files=upload_to_dask,
+                    scheduler_options={"dashboard_address": ":8787"},
+                )
+                cluster.adapt(minimum=1, maximum=100)
+        elif args.env == "casa":
+            if not args.nocluster:
+                from coffea_casa import CoffeaCasaCluster
+                cluster = CoffeaCasaCluster(memory=dask_memory)
+                cluster.adapt(minimum=4, maximum=400)
+        else:
+            cluster = dask.distributed.LocalCluster(
+                n_workers=nworkers,
+                threads_per_worker=1,
+                scheduler_port=0,
+                dashboard_address=":8787",
+            )
+        client = Client(cluster)
+        if args.env == "casa" and not args.nocluster:
+            from distributed.diagnostics.plugin import UploadDirectory
+            client.register_worker_plugin(
+                UploadDirectory(os.path.join(repo_root, "data"), restart=True, update_path=True),
+                nanny=True,
+            )
+            client.register_worker_plugin(
+                UploadDirectory(os.path.join(repo_root, "python"), restart=True, update_path=True),
+                nanny=True,
+            )
+            client.upload_file(os.path.join(repo_root, "ttbarprocessor.py"))
 
     for sample in samples:
         skipbadfiles = False
@@ -485,10 +523,7 @@ def run_analysis(args):
                 files = [redirector + f for f in files]
                 if args.test:
                     files = [files[int(len(files) / 2)]]
-                    nworkers = 1
                     maxchunks = 1
-                else:
-                    nworkers = 4
 
                 fileset = {sample: files}
 
@@ -557,83 +592,33 @@ def run_analysis(args):
                         ),
                     )
                 else:
-                    if args.env == "lpc":
-                        if args.nocluster:
-                            cluster = None
-                        else:
-                            cluster = LPCCondorCluster(
-                                memory=dask_memory,
-                                transfer_input_files=upload_to_dask,
-                                scheduler_options={"dashboard_address": ":8787"},
-                            )
-                            cluster.adapt(minimum=1, maximum=100)
-                    elif args.env == "casa":
-                        if args.nocluster:
-                            cluster = None
-                        else:
-                            from coffea_casa import CoffeaCasaCluster
+                    run_instance = processor.Runner(
+                        metadata_cache={},
+                        executor=processor.DaskExecutor(client=client, retries=2),
+                        schema=NanoAODSchema,
+                        savemetrics=True,
+                        skipbadfiles=skipbadfiles,
+                        chunksize=chunksize_dask,
+                        maxchunks=maxchunks,
+                    )
 
-                            cluster = CoffeaCasaCluster(memory=dask_memory)
-                            cluster.adapt(minimum=4, maximum=400)
-                            _setup_client = Client(cluster)
-                            from distributed.diagnostics.plugin import UploadDirectory
-
-                            _setup_client.register_worker_plugin(
-                                UploadDirectory(
-                                    os.path.join(repo_root, "data"),
-                                    restart=True,
-                                    update_path=True,
-                                ),
-                                nanny=True,
-                            )
-                            _setup_client.register_worker_plugin(
-                                UploadDirectory(
-                                    os.path.join(repo_root, "python"),
-                                    restart=True,
-                                    update_path=True,
-                                ),
-                                nanny=True,
-                            )
-                            _setup_client.upload_file(
-                                os.path.join(repo_root, "ttbarprocessor.py")
-                            )
-                            _setup_client.close()
-                    else:
-                        cluster = dask.distributed.LocalCluster(
-                            n_workers=nworkers,
-                            threads_per_worker=1,
-                            scheduler_port=0,
-                            dashboard_address=":8787",
-                        )
-
-                    with Client(cluster) as client:
-                        run_instance = processor.Runner(
-                            metadata_cache={},
-                            executor=processor.DaskExecutor(client=client, retries=2),
-                            schema=NanoAODSchema,
-                            savemetrics=True,
-                            skipbadfiles=skipbadfiles,
-                            chunksize=chunksize_dask,
-                            maxchunks=maxchunks,
-                        )
-
-                        output, metrics = run_instance(
-                            fileset,
-                            treename="Events",
-                            processor_instance=TTbarResProcessor(
-                                iov=IOV,
-                                bkgEst=args.bkgest,
-                                noSyst=args.noSyst,
-                                deepAK8Cut=args.ttagWP,
-                                useDeepAK8=useDeepAK8,
-                                useDeepCSV=useDeepCSV,
-                                htCut=htCut,
-                                anacats=anacats,
-                                systematics=systematics,
-                                blinding=args.blind,
-                                produce_ntuple=args.ntuple,
-                            ),
-                        )
+                    output, metrics = run_instance(
+                        fileset,
+                        treename="Events",
+                        processor_instance=TTbarResProcessor(
+                            iov=IOV,
+                            bkgEst=args.bkgest,
+                            noSyst=args.noSyst,
+                            deepAK8Cut=args.ttagWP,
+                            useDeepAK8=useDeepAK8,
+                            useDeepCSV=useDeepCSV,
+                            htCut=htCut,
+                            anacats=anacats,
+                            systematics=systematics,
+                            blinding=args.blind,
+                            produce_ntuple=args.ntuple,
+                        ),
+                    )
 
                 output["analysisCategories"] = label_map
                 util.save(output, savefilename)
@@ -645,12 +630,22 @@ def run_analysis(args):
     if metrics is not None:
         print(f"Events/s: {metrics['entries'] / elapsed:.0f}")
 
+    if client is not None:
+        client.close()
+    if cluster is not None:
+        cluster.close()
+
     return {"elapsed": elapsed, "metrics": metrics, "output": output, "savefilenames": savefilenames}
 ```
 
 ```python
-
+# ---- Build args ------ #
 args = build_args()
+```
+
+```python
+# ---- Run the process ---- #
+
 run_summary = run_analysis(args)
 ```
 
