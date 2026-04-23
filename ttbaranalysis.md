@@ -192,7 +192,9 @@ def _available_subsamples(datasets, iov):
 
 _initial_datasets = _valid_multi(cfg["dataset"], _dataset_opts, DEFAULTS["dataset"])
 _initial_iov = _valid_choice(cfg["iov"], _iov_opts, DEFAULTS["iov"])
-_initial_subsample_datasets = list(default_signals) if cfg["signals"] else list(_initial_datasets)
+_initial_subsample_datasets = (
+    list(default_signals) if cfg["signals"] else list(_initial_datasets)
+)
 _initial_subsample_options = _available_subsamples(
     _initial_subsample_datasets, _initial_iov
 )

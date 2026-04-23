@@ -591,9 +591,11 @@ class TTbarResProcessor(processor.ProcessorABC):
         # --- sort FatJets by pT, then assign jet0 as the higher-scoring one ---
         pt_order    = ak.argsort(FatJets.pt, ascending=False)
         sorted_jets = FatJets[pt_order]
-        lead_higher = self._tscore(sorted_jets[:, 0]) > self._tscore(sorted_jets[:, 1])
-        jet0 = ak.where(lead_higher, sorted_jets[:, 0], sorted_jets[:, 1])
-        jet1 = ak.where(lead_higher, sorted_jets[:, 1], sorted_jets[:, 0])
+        top_two_jets = sorted_jets[:, :2]
+        score_order = ak.argsort(self._tscore(top_two_jets), ascending=False)
+        score_sorted_jets = top_two_jets[score_order]
+        jet0 = score_sorted_jets[:, 0]
+        jet1 = score_sorted_jets[:, 1]
 
         mcut_s0 = (self.minMSD < jet0.msoftdrop) & (jet0.msoftdrop < self.maxMSD)
         mcut_s1 = (self.minMSD < jet1.msoftdrop) & (jet1.msoftdrop < self.maxMSD)
