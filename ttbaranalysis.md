@@ -126,6 +126,12 @@ _redirector_opts = [
 ]
 _redirector_vals = [v for _, v in _redirector_opts]
 _env_opts = ["casa", "lpc", "winterfell", "local"]
+_iov_opts = ["2022", "2023", "2024"]
+_bkgest_opts = [("None", None), "2dalphabet", "mistag"]
+_toptagger_opts = ["deepak8", "cmsv2"]
+_ttagWP_opts = ["loose", "medium", "tight"]
+_btagger_opts = ["deepcsv", "csvv2"]
+_ht_opts = ["1400", "950"]
 _manifest_files = {
     "data": "data/nanoAOD/data.json",
     "QCD": "data/nanoAOD/QCD.json",
@@ -137,6 +143,23 @@ _manifest_files = {
     "RSGluon": "data/nanoAOD/RSGluon.json",
     "ZPrimeLocal": "data/nanoAOD/local_xsec_test.json",
 }
+
+
+def _option_values(options):
+    return [option[1] if isinstance(option, tuple) else option for option in options]
+
+
+def _valid_choice(value, options, default):
+    values = _option_values(options)
+    return value if value in values else default
+
+
+def _valid_multi(values, options, default=()):
+    allowed = set(_option_values(options))
+    selected = [value for value in (values or []) if value in allowed]
+    if selected:
+        return tuple(selected)
+    return tuple(value for value in default if value in allowed)
 
 
 def _manifest_subsections(dataset, iov):
@@ -167,10 +190,19 @@ def _available_subsamples(datasets, iov):
     return subsamples
 
 
+_initial_datasets = _valid_multi(cfg["dataset"], _dataset_opts, DEFAULTS["dataset"])
+_initial_iov = _valid_choice(cfg["iov"], _iov_opts, DEFAULTS["iov"])
+_initial_subsample_datasets = list(default_signals) if cfg["signals"] else list(_initial_datasets)
+_initial_subsample_options = _available_subsamples(
+    _initial_subsample_datasets, _initial_iov
+)
+_initial_subsamples = _valid_multi(cfg["subsample"], _initial_subsample_options)
+
+
 # ── Widget definitions ─────────────────────────────────────────────────────────
 w_dataset = widgets.SelectMultiple(
     options=_dataset_opts,
-    value=tuple(v for v in cfg["dataset"] if v in _dataset_opts),
+    value=_initial_datasets,
     description="Dataset",
     style=style,
     layout=widgets.Layout(width="210px", height="150px"),
@@ -179,15 +211,15 @@ w_signals = widgets.Checkbox(
     value=cfg["signals"], description="Signals only", style=style, layout=layout
 )
 w_iov = widgets.Dropdown(
-    options=["2022", "2023", "2024"],
-    value=cfg["iov"],
+    options=_iov_opts,
+    value=_initial_iov,
     description="IOV",
     style=style,
     layout=layout,
 )
 w_subsample = widgets.SelectMultiple(
-    options=[],
-    value=tuple(cfg["subsample"]),
+    options=_initial_subsample_options,
+    value=_initial_subsamples,
     description="Subsample",
     style=style,
     layout=widgets.Layout(width="260px", height="140px"),
@@ -203,15 +235,15 @@ w_blind = widgets.Checkbox(
     value=cfg["blind"], description="Blind", style=style, layout=layout
 )
 w_bkgest = widgets.Dropdown(
-    options=[("None", None), "2dalphabet", "mistag"],
-    value=cfg["bkgest"],
+    options=_bkgest_opts,
+    value=_valid_choice(cfg["bkgest"], _bkgest_opts, DEFAULTS["bkgest"]),
     description="Bkg est",
     style=style,
     layout=layout,
 )
 w_toptagger = widgets.Dropdown(
-    options=["deepak8", "cmsv2"],
-    value=cfg["toptagger"],
+    options=_toptagger_opts,
+    value=_valid_choice(cfg["toptagger"], _toptagger_opts, DEFAULTS["toptagger"]),
     description="Top tagger",
     style=style,
     layout=layout,
@@ -224,22 +256,22 @@ w_redirector = widgets.Dropdown(
     layout=layout_wide,
 )
 w_ttagWP = widgets.Dropdown(
-    options=["loose", "medium", "tight"],
-    value=cfg["ttagWP"],
+    options=_ttagWP_opts,
+    value=_valid_choice(cfg["ttagWP"], _ttagWP_opts, DEFAULTS["ttagWP"]),
     description="ttag WP",
     style=style,
     layout=layout,
 )
 w_btagger = widgets.Dropdown(
-    options=["deepcsv", "csvv2"],
-    value=cfg["btagger"],
+    options=_btagger_opts,
+    value=_valid_choice(cfg["btagger"], _btagger_opts, DEFAULTS["btagger"]),
     description="B tagger",
     style=style,
     layout=layout,
 )
 w_ht = widgets.Dropdown(
-    options=["1400", "950"],
-    value=cfg["ht"],
+    options=_ht_opts,
+    value=_valid_choice(cfg["ht"], _ht_opts, DEFAULTS["ht"]),
     description="HT cut",
     style=style,
     layout=layout,
