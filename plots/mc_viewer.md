@@ -78,7 +78,7 @@ samples = {
 # Convenience: colors and display labels per sample
 sample_style = {
     'TTbar': {'color': CMS_COLORS[0], 'label': r'$t\bar{t}$', 'stack': False},
-    'QCD': {'color': CMS_COLORS[1], 'label': 'QCD', 'stack': True, 'cmap': 'YlOrBr'},
+    'QCD': {'color': CMS_COLORS[1], 'label': 'QCD', 'stack': True, 'cmap': 'tab20'},
     'ZPrime4000': {'color': CMS_COLORS[2], 'label': "Z' (4 TeV)", 'stack': False},
 }
 
@@ -146,6 +146,9 @@ def component_colors(sample_name, n):
     if n == 1 or 'cmap' not in style:
         return [style['color']] * n
     cmap = plt.get_cmap(style['cmap'])
+    if hasattr(cmap, 'colors'):
+        color_order = list(range(0, cmap.N, 2)) + list(range(1, cmap.N, 2))
+        return [cmap(color_order[i % cmap.N]) for i in range(n)]
     return [cmap(0.35 + 0.5 * i / max(n - 1, 1)) for i in range(n)]
 
 
