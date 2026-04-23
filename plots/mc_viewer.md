@@ -174,7 +174,7 @@ print('Categories:', ref['analysisCategories'])
 
 Each row: one variable.  
 Left column: central (`|Δy| < 1`), right column: forward (`|Δy| > 1`).  
-QCD pT bins are stacked; single-component samples are drawn as stepped histograms.
+QCD pT bins are drawn as visible stacked filled histograms, with a total-QCD outline.
 
 ```python
 plot_specs = [
@@ -199,43 +199,61 @@ cat_pairs = [
     (1, r'$|\Delta y| > 1$  (at least 1 top-tagged)'),
 ]
 
+plot_density = False
+stack_sample_names = [name for name in samples if sample_style[name].get('stack', False)]
+overlay_sample_names = [name for name in samples if not sample_style[name].get('stack', False)]
+
 for var, xlabel in plot_specs:
     fig, axes = plt.subplots(1, len(cat_pairs), figsize=(10 * len(cat_pairs), 8))
 
     for ax, (cat_id, cat_label) in zip(axes, cat_pairs):
-        # ── MC samples ──
-        for sample_name in samples:
+        # ── Stacked MC components, e.g. QCD pT bins ──
+        for sample_name in stack_sample_names:
             style = sample_style[sample_name]
             try:
                 hists, labels = get_sample_component_hists(sample_name, var, anacat_id=cat_id)
             except Exception:
                 continue
-            if style.get('stack', False):
-                hep.histplot(
-                    hists, ax=ax, histtype='fill', stack=True,
-                    color=component_colors(sample_name, len(hists)),
-                    label=labels, density=True, alpha=0.75,
-                )
-            else:
-                hep.histplot(
-                    sum_hists(hists), ax=ax, histtype='step',
-                    color=style['color'], label=style['label'], density=True,
-                )
+            h_total = sum_hists(hists)
+            hep.histplot(
+                hists, ax=ax, histtype='fill', stack=True,
+                color=component_colors(sample_name, len(hists)),
+                edgecolor='black', linewidth=0.4,
+                label=labels, density=plot_density, alpha=0.85, zorder=1,
+            )
+            hep.histplot(
+                h_total, ax=ax, histtype='step',
+                color=style['color'], label=f"{style['label']} total",
+                density=plot_density, linewidth=2.0, zorder=2,
+            )
+
+        # ── Non-stacked MC overlays, e.g. TTbar/signal ──
+        for sample_name in overlay_sample_names:
+            style = sample_style[sample_name]
+            try:
+                h = get_sample_hist(sample_name, var, anacat_id=cat_id)
+            except Exception:
+                continue
+            hep.histplot(
+                h, ax=ax, histtype='step',
+                color=style['color'], label=style['label'],
+                density=plot_density, linewidth=2.0, zorder=3,
+            )
 
         # ── Data (sum of all eras) ──
         try:
             h_data = get_data_hist(var, anacat_id=cat_id)
             hep.histplot(h_data, ax=ax, histtype='errorbar',
-                         color='black', label='Data', density=True)
+                         color='black', label='Data', density=plot_density, zorder=4)
         except Exception:
             pass
 
         hplot.quick_label(xlabel=xlabel, data=True, ax=ax)
         ax.text(0.97, 0.97, cat_label, transform=ax.transAxes,
                 ha='right', va='top', fontsize=20)
-        ax.set_ylabel('A.U.')
+        ax.set_ylabel('A.U.' if plot_density else '# Events')
         ax.set_xlabel(xlabel, labelpad=20)
-        ax.legend()
+        ax.legend(ncol=2, fontsize=14)
 
     plt.tight_layout()
     plt.show()
