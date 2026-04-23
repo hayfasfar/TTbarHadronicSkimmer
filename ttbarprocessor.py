@@ -373,21 +373,51 @@ class TTbarResProcessor(processor.ProcessorABC):
             time.time(), events.metadata['dataset'], get_memory_usage(),
         )
 
+        dataset = events.metadata['dataset']
         nEvents = len(events.event)
+        self.logger.debug('preprocessor input: dataset=%s, events=%d', dataset, nEvents)
 
         # remove QCD events with large gen weights or below the HT bin threshold
-        if "QCD" in events.metadata['dataset']:
-            events = events[events.Generator.binvar > _QCD_BINVAR_MIN]
+        if "QCD" in dataset:
+            binvar_mask = events.Generator.binvar > _QCD_BINVAR_MIN
+            n_pass_binvar = int(ak.sum(binvar_mask))
+            if nEvents > 0:
+                binvar_min = float(ak.min(events.Generator.binvar))
+                binvar_max = float(ak.max(events.Generator.binvar))
+            else:
+                binvar_min = None
+                binvar_max = None
+            self.logger.debug(
+                'QCD binvar filter: before=%d, pass=%d, fail=%d, threshold>%s, '
+                'binvar_min=%s, binvar_max=%s',
+                nEvents, n_pass_binvar, nEvents - n_pass_binvar,
+                _QCD_BINVAR_MIN, binvar_min, binvar_max,
+            )
+            events = events[binvar_mask]
 
-            if events.metadata['dataset'] not in self.means_stddevs:
+            if dataset not in self.means_stddevs:
                 average = np.average(events.genWeight)
                 stddev  = np.std(events.genWeight)
-                self.means_stddevs[events.metadata['dataset']] = (average, stddev)
-            average, stddev = self.means_stddevs[events.metadata['dataset']]
+                self.means_stddevs[dataset] = (average, stddev)
+            average, stddev = self.means_stddevs[dataset]
+            self.logger.debug(
+                'QCD genWeight stats: after_binvar=%d, average=%s, stddev=%s',
+                len(events), average, stddev,
+            )
             vals = (events.genWeight - average) / stddev
-            events = events[np.abs(vals) < 2]
+            genweight_mask = np.abs(vals) < 2
+            n_pass_genweight = int(ak.sum(genweight_mask))
+            self.logger.debug(
+                'QCD genWeight filter: before=%d, pass=%d, fail=%d',
+                len(events), n_pass_genweight, len(events) - n_pass_genweight,
+            )
+            events = events[genweight_mask]
+            self.logger.debug(
+                'QCD preprocessor output: raw=%d, kept=%d',
+                nEvents, len(events),
+            )
 
-        isData = ('data' in events.metadata['dataset']) or ('SingleMu' in events.metadata['dataset'])
+        isData = ('data' in dataset) or ('SingleMu' in dataset)
         corrections = self.jet_manager.build_corrections(events, isData)
 
         if corrections is None:
@@ -410,6 +440,11 @@ class TTbarResProcessor(processor.ProcessorABC):
 
         if isNominal:
             output['cutflow']['all events 1'] += nEvents
+            self.logger.debug(
+                'cutflow all events 1 filled: original_chunk_events=%d, '
+                'events_entering_analysis=%d',
+                nEvents, len(events),
+            )
 
         # --- lumi mask ---
         if isData:
@@ -422,6 +457,7 @@ class TTbarResProcessor(processor.ProcessorABC):
         # --- blinding (data only, keep every 10th event) ---
         if self.blinding and isData:
             events = events[::10]
+            self.logger.debug('after blinding: events=%d', len(events))
 
         # --- trigger ---
         selection = PackedSelection()
@@ -445,10 +481,20 @@ class TTbarResProcessor(processor.ProcessorABC):
                 for p in available[1:]:
                     mask = mask | events.HLT[p]
                 selection.add('trigger', mask)
+                self.logger.debug(
+                    'trigger paths found for %s: %s, pass=%d/%d',
+                    self.iov, available, int(ak.sum(mask)), len(events),
+                )
 
         # --- build jet collections ---
         FatJets, SubJets, Jets, GenJets, GenJetAK8, SubGenJetAK8 = (
             self.jet_manager.prepare_analysis_objects(events, isData)
+        )
+        self.logger.debug(
+            'prepared objects: events=%d, total FatJet=%d, total Jet=%d, '
+            'events_with>=2FatJet=%d',
+            len(events), int(ak.sum(ak.num(FatJets))), int(ak.sum(ak.num(Jets))),
+            int(ak.sum(ak.num(FatJets) >= 2)),
         )
         run  = events.run.to_numpy()
         lumi = events.luminosityBlock.to_numpy()
@@ -464,6 +510,11 @@ class TTbarResProcessor(processor.ProcessorABC):
         logger.debug('memory:%s: get nanoAOD objects %s:%s', time.time(), correction, get_memory_usage())
 
         if len(events) < 10:
+            self.logger.debug(
+                'early return before weights/baseline cutflow: events=%d < 10 '
+                '(original_chunk_events=%d, correction=%s)',
+                len(events), nEvents, correction,
+            )
             return output
 
         # --- event weights ---
@@ -479,6 +530,10 @@ class TTbarResProcessor(processor.ProcessorABC):
             output['cutflow']['all events'] += len(FatJets)
             output['cutflow']['sumw']        += np.sum(evtweights)
             output['cutflow']['sumw2']       += np.sum(evtweights ** 2)
+            self.logger.debug(
+                'cutflow all events filled: events=%d, sumw=%s, sumw2=%s',
+                len(FatJets), np.sum(evtweights), np.sum(evtweights ** 2),
+            )
 
         # --- baseline jet selection ---
         FatJets, jet_masks = self.jet_manager.baseline_masks(events, FatJets, Jets)
@@ -496,6 +551,10 @@ class TTbarResProcessor(processor.ProcessorABC):
                 print(f"[CUTFLOW] after {cut} (cumulative): {n}")
 
         eventCut = selection.all(*selection.names)
+        self.logger.debug(
+            'combined preselection mask: pass=%d/%d, cuts=%s',
+            int(ak.sum(eventCut)), len(events), selection.names,
+        )
 
         FatJets    = FatJets[eventCut]
         SubJets    = SubJets[eventCut]
@@ -511,6 +570,11 @@ class TTbarResProcessor(processor.ProcessorABC):
             print(f"[CUTFLOW] after all preselection (eventCut): {len(events)}")
         logger.debug(f"Length of event {len(events)}")
         if len(events) < 10:
+            self.logger.debug(
+                'early return after baseline eventCut: events=%d < 10 '
+                '(original_chunk_events=%d, correction=%s)',
+                len(events), nEvents, correction,
+            )
             return output
 
         if not isData:
