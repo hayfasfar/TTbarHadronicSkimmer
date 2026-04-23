@@ -66,7 +66,7 @@ _LUMI_PB = {
     '2017':    41530.,
     '2018':    59740.,
     '2023':    27000.,
-    '2024':    115000.,
+    '2024':    112700.,
 }
 
 # Per-IOV top-tagger score thresholds.
@@ -144,7 +144,7 @@ class TTbarResProcessor(processor.ProcessorABC):
 
     def __init__(
         self,
-        htCut=900.,
+        htCut=1500,
         ak8PtMin=400.,
         minMSD=105.,
         maxMSD=210.,

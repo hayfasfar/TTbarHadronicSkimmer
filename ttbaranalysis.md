@@ -6,9 +6,9 @@ jupyter:
       extension: .md
       format_name: markdown
       format_version: '1.3'
-      jupytext_version: 1.19.1
+      jupytext_version: 1.19.0
   kernelspec:
-    display_name: coffea_latest
+    display_name: Python 3 (ipykernel)
     language: python
     name: python3
 ---
@@ -80,7 +80,7 @@ DEFAULTS = dict(
     redirector="rootfiles/",
     ttagWP="medium",
     btagger="deepcsv",
-    ht="1400",
+    ht="1500",
     noSyst=False,
     ntuple=False,
     overwrite=False,
@@ -578,7 +578,7 @@ def run_analysis(args):
     useDeepAK8 = args.toptagger == "deepak8"
     useDeepCSV = args.btagger == "deepcsv"
     htCut = 1400.0 if args.ht == "1400" else 950.0
-    dask_memory = "5GB"
+    dask_memory = "6GB"
     chunksize_dask = 100000
     chunksize_futures = 200000
     maxchunks = 10 if args.test else None
@@ -824,7 +824,7 @@ def run_analysis(args):
                     else:
                         run_instance = processor.Runner(
                             metadata_cache={},
-                            executor=processor.DaskExecutor(client=client, retries=2),
+                            executor=processor.DaskExecutor(client=client, retries=2, treereduction=20),
                             schema=NanoAODSchema,
                             savemetrics=True,
                             skipbadfiles=skipbadfiles,
