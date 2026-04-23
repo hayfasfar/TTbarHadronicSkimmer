@@ -166,6 +166,7 @@ def _available_subsamples(datasets, iov):
                 subsamples.append(subsection)
     return subsamples
 
+
 # ── Widget definitions ─────────────────────────────────────────────────────────
 w_dataset = widgets.SelectMultiple(
     options=_dataset_opts,
@@ -314,7 +315,9 @@ def reset_to_defaults(_):
 
 
 def refresh_subsample_options(_=None):
-    selected_datasets = list(default_signals) if w_signals.value else list(w_dataset.value)
+    selected_datasets = (
+        list(default_signals) if w_signals.value else list(w_dataset.value)
+    )
     options = _available_subsamples(selected_datasets, w_iov.value)
     current = [v for v in w_subsample.value if v in options]
     w_subsample.options = options
