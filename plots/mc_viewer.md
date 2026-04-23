@@ -20,6 +20,8 @@ jupyter:
 
 ```python
 import os
+import re
+from pathlib import Path
 
 if os.path.basename(os.getcwd()) == 'plots':
     os.chdir('..')
@@ -36,18 +38,53 @@ hplot.setup(era="2024")
 
 ```python
 # ── Load MC samples ──────────────────────────────────────────────────────────
+coffea_dir = Path('./outputs/dy')
+
+
+def _qcd_pt_sort_key(path):
+    match = re.search(r'QCD_PT-(\d+)to(\d+|Inf)', path.name)
+    if match is None:
+        return (float('inf'), float('inf'), path.name)
+    low = int(match.group(1))
+    high = float('inf') if match.group(2) == 'Inf' else int(match.group(2))
+    return (low, high, path.name)
+
+
+def _qcd_pt_label(path):
+    match = re.search(r'QCD_PT-(\d+)to(\d+|Inf)', path.name)
+    if match is None:
+        return path.stem
+    return f"QCD {match.group(1)}-{match.group(2)}"
+
+
+def _load_components(paths, label_fn):
+    paths = sorted(paths, key=_qcd_pt_sort_key)
+    if not paths:
+        raise FileNotFoundError(
+            f"No QCD pT-bin files found in {coffea_dir} matching "
+            "'QCD_2024_QCD_PT-*to*_noSyst.coffea'"
+        )
+    return {label_fn(path): load(path) for path in paths}
+
+
+qcd_pt_paths = coffea_dir.glob('QCD_2024_QCD_PT-*to*_noSyst.coffea')
+
 samples = {
-    'TTbar':      load('./outputs/dy/TTbar_2024inclusive_noSyst.coffea'),
-     'QCD':      load('./outputs/dy/QCD_2024inclusive_noSyst.coffea'),
-    #'ZPrime4000': load('./outputs/dy/ZPrime4000_1_2024_noSyst.coffea'),
+    'TTbar': {'TTbar': load(coffea_dir / 'TTbar_2024inclusive_noSyst.coffea')},
+    'QCD': _load_components(qcd_pt_paths, _qcd_pt_label),
+    #'ZPrime4000': {"Z' (4 TeV)": load(coffea_dir / 'ZPrime4000_1_2024_noSyst.coffea')},
 }
 
 # Convenience: colors and display labels per sample
 sample_style = {
-    'TTbar':      {'color': CMS_COLORS[0], 'label': r'$t\bar{t}$'},
-    'QCD':      {'color': CMS_COLORS[1], 'label': 'QCD'},
-    'ZPrime4000': {'color': CMS_COLORS[2], 'label': "Z' (4 TeV)"},
+    'TTbar': {'color': CMS_COLORS[0], 'label': r'$t\bar{t}$', 'stack': False},
+    'QCD': {'color': CMS_COLORS[1], 'label': 'QCD', 'stack': True, 'cmap': 'YlOrBr'},
+    'ZPrime4000': {'color': CMS_COLORS[2], 'label': "Z' (4 TeV)", 'stack': False},
 }
+
+print('Loaded MC components:')
+for sample_name, components in samples.items():
+    print(f"  {sample_name}: {', '.join(components)}")
 ```
 
 ```python
@@ -77,6 +114,41 @@ def get_hist(output, var, anacat_id=None, syst='nominal'):
     return h
 
 
+def sum_hists(hists):
+    """Return the bin-by-bin sum of a non-empty list of hist histograms."""
+    if not hists:
+        raise ValueError('Need at least one histogram to sum')
+    result = hists[0]
+    for h in hists[1:]:
+        result = result + h
+    return result
+
+
+def get_sample_component_hists(sample_name, var, anacat_id=None, syst='nominal'):
+    """Fetch 1D histograms for every loaded component of one sample."""
+    hists = []
+    labels = []
+    for component_label, output in samples[sample_name].items():
+        hists.append(get_hist(output, var, anacat_id=anacat_id, syst=syst))
+        labels.append(component_label)
+    return hists, labels
+
+
+def get_sample_hist(sample_name, var, anacat_id=None, syst='nominal'):
+    """Fetch one sample histogram, summing components when needed."""
+    hists, _ = get_sample_component_hists(sample_name, var, anacat_id=anacat_id, syst=syst)
+    return sum_hists(hists)
+
+
+def component_colors(sample_name, n):
+    """Return one color per component, using a colormap for stacked samples."""
+    style = sample_style[sample_name]
+    if n == 1 or 'cmap' not in style:
+        return [style['color']] * n
+    cmap = plt.get_cmap(style['cmap'])
+    return [cmap(0.35 + 0.5 * i / max(n - 1, 1)) for i in range(n)]
+
+
 def get_data_hist(var, anacat_id=None, syst='nominal'):
     """Fetch histogram `var` from all data eras and return their sum."""
     hists = []
@@ -88,15 +160,12 @@ def get_data_hist(var, anacat_id=None, syst='nominal'):
         else:
             h = h.project(axis_name)
         hists.append(h)
-    result = hists[0]
-    for h in hists[1:]:
-        result = result + h
-    return result
+    return sum_hists(hists)
 ```
 
 ```python
 # Inspect available keys and categories (use any sample as reference)
-ref = next(iter(samples.values()))
+ref = next(iter(next(iter(samples.values())).values()))
 print('Histogram keys:', list(ref.keys()))
 print('Categories:', ref['analysisCategories'])
 ```
@@ -105,7 +174,7 @@ print('Categories:', ref['analysisCategories'])
 
 Each row: one variable.  
 Left column: central (`|Δy| < 1`), right column: forward (`|Δy| > 1`).  
-Each sample is drawn as a separate stepped histogram on the same axes.
+QCD pT bins are stacked; single-component samples are drawn as stepped histograms.
 
 ```python
 plot_specs = [
@@ -135,14 +204,23 @@ for var, xlabel in plot_specs:
 
     for ax, (cat_id, cat_label) in zip(axes, cat_pairs):
         # ── MC samples ──
-        for sample_name, output in samples.items():
+        for sample_name in samples:
             style = sample_style[sample_name]
             try:
-                h = get_hist(output, var, anacat_id=cat_id)
+                hists, labels = get_sample_component_hists(sample_name, var, anacat_id=cat_id)
             except Exception:
                 continue
-            hep.histplot(h, ax=ax, histtype='step',
-                         color=style['color'], label=style['label'], density=True)
+            if style.get('stack', False):
+                hep.histplot(
+                    hists, ax=ax, histtype='fill', stack=True,
+                    color=component_colors(sample_name, len(hists)),
+                    label=labels, density=True, alpha=0.75,
+                )
+            else:
+                hep.histplot(
+                    sum_hists(hists), ax=ax, histtype='step',
+                    color=style['color'], label=style['label'], density=True,
+                )
 
         # ── Data (sum of all eras) ──
         try:
@@ -179,10 +257,10 @@ for var, xlabel in gen_specs:
     fig, axes = plt.subplots(1, len(cat_pairs), figsize=(10 * len(cat_pairs), 8))
 
     for ax, (cat_id, cat_label) in zip(axes, cat_pairs):
-        for sample_name, output in gen_samples.items():
+        for sample_name in gen_samples:
             style = sample_style[sample_name]
             try:
-                h = get_hist(output, var, anacat_id=cat_id)
+                h = get_sample_hist(sample_name, var, anacat_id=cat_id)
             except Exception:
                 continue
             hep.histplot(h, ax=ax, histtype='step',
@@ -204,7 +282,10 @@ for var, xlabel in gen_specs:
 ```python
 for sample_name, output in samples.items():
     print(f"── {sample_name} ──")
-    print(output['cutflow'])
+    for component_label, component_output in output.items():
+        print(f"  {component_label}")
+        print(component_output['cutflow'])
+        print()
     print()
 ```
 
