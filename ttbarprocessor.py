@@ -388,14 +388,20 @@ class TTbarResProcessor(processor.ProcessorABC):
                 'QCD genWeight stats: before=%d, average=%s, stddev=%s',
                 len(events), average, stddev,
             )
-            vals = (events.genWeight - average) / stddev
-            genweight_mask = np.abs(vals) < 2
-            n_pass_genweight = int(ak.sum(genweight_mask))
-            self.logger.debug(
-                'QCD genWeight filter: before=%d, pass=%d, fail=%d',
-                len(events), n_pass_genweight, len(events) - n_pass_genweight,
-            )
-            events = events[genweight_mask]
+            if stddev == 0 or not np.isfinite(stddev):
+                self.logger.debug(
+                    'QCD genWeight filter skipped: stddev=%s, keeping all %d events',
+                    stddev, len(events),
+                )
+            else:
+                vals = (events.genWeight - average) / stddev
+                genweight_mask = np.abs(vals) < 2
+                n_pass_genweight = int(ak.sum(genweight_mask))
+                self.logger.debug(
+                    'QCD genWeight filter: before=%d, pass=%d, fail=%d',
+                    len(events), n_pass_genweight, len(events) - n_pass_genweight,
+                )
+                events = events[genweight_mask]
             self.logger.debug(
                 'QCD preprocessor output: raw=%d, kept=%d',
                 nEvents, len(events),
