@@ -84,6 +84,7 @@ DEFAULTS = dict(
     ht="1400",
     noSyst=False,
     ntuple=False,
+    overwrite=False,
     dask=False,
     env="lpc",
     test=False,
@@ -219,6 +220,9 @@ w_noSyst = widgets.Checkbox(
 w_ntuple = widgets.Checkbox(
     value=cfg["ntuple"], description="Ntuple", style=style, layout=layout
 )
+w_overwrite = widgets.Checkbox(
+    value=cfg["overwrite"], description="Overwrite", style=style, layout=layout
+)
 w_dask = widgets.Checkbox(
     value=cfg["dask"], description="Dask", style=style, layout=layout
 )
@@ -255,6 +259,7 @@ WIDGETS = {
     "ht": w_ht,
     "noSyst": w_noSyst,
     "ntuple": w_ntuple,
+    "overwrite": w_overwrite,
     "dask": w_dask,
     "env": w_env,
     "test": w_test,
@@ -313,6 +318,7 @@ col3 = widgets.VBox(
         w_ht,
         w_noSyst,
         w_ntuple,
+        w_overwrite,
     ],
     layout=widgets.Layout(margin="0 8px 0 0"),
 )
@@ -364,6 +370,7 @@ print("----------------")
 
 ```python
 import subprocess
+import traceback
 
 
 def _build_sample_metadata(sample, subsection, iov, metadata):
@@ -406,6 +413,17 @@ def _collect_manifest_sections(sample, iov, manifest, subsections):
 
     files, metadata = _parse_manifest_entry(sample, "", iov, iov_entry)
     return [("", files, metadata)]
+
+
+def _format_section_label(iov, sample, subsection):
+    return f"{iov} {sample} {subsection}".strip()
+
+
+def _print_runner_block(lines, rule_char="-", width=66):
+    print(rule_char * width)
+    for line in lines:
+        print(line)
+    print(rule_char * width)
 
 
 def run_analysis(args):
@@ -528,6 +546,8 @@ def run_analysis(args):
     output = None
     metrics = None
     savefilenames = []
+    skipped_outputs = []
+    failures = []
     nworkers = 1 if args.test else 4
 
     # ── Dask cluster/client: created once and reused across all samples ────────
@@ -573,20 +593,21 @@ def run_analysis(args):
             )
             client.upload_file(os.path.join(repo_root, "ttbarprocessor.py"))
 
-    for sample in samples:
+    for sample_index, sample in enumerate(samples):
         skipbadfiles = False
         inputfile = jsonfiles[sample]
 
         with open(inputfile) as json_file:
             subsections = args.era + args.mass + args.pt
             manifest = json.load(json_file)
-
-            for subsection, files, sample_metadata in _collect_manifest_sections(
+            sections = _collect_manifest_sections(
                 sample=sample,
                 iov=IOV,
                 manifest=manifest,
                 subsections=subsections,
-            ):
+            )
+
+            for section_index, (subsection, files, sample_metadata) in enumerate(sections):
                 files = [redirector + f for f in files]
                 if args.test:
                     files = [files[int(len(files) / 2)]]
@@ -634,70 +655,111 @@ def run_analysis(args):
                 if args.test:
                     savefilename = savefilename.replace(".coffea", "_test.coffea")
 
-                if not args.dask:
-                    runner = processor.Runner(
-                        executor=processor.FuturesExecutor(workers=nworkers),
-                        schema=NanoAODSchema,
-                        chunksize=chunksize_futures,
-                        maxchunks=maxchunks,
-                        skipbadfiles=skipbadfiles,
-                        xrootdtimeout=500,
-                        savemetrics=True,
-                    )
-
-                    output, metrics = runner(
-                        fileset,
-                        treename="Events",
-                        processor_instance=TTbarResProcessor(
-                            iov=IOV,
-                            bkgEst=args.bkgest,
-                            noSyst=args.noSyst,
-                            deepAK8Cut=args.ttagWP,
-                            useDeepAK8=useDeepAK8,
-                            useDeepCSV=useDeepCSV,
-                            htCut=htCut,
-                            anacats=anacats,
-                            systematics=systematics,
-                            blinding=args.blind,
-                            debug=True,
-                            produce_ntuple=args.ntuple,
-                            sample_metadata=sample_metadata,
-                        ),
-                    )
+                section_label = _format_section_label(IOV, sample, subsection)
+                if section_index + 1 < len(sections):
+                    next_label = _format_section_label(IOV, sample, sections[section_index + 1][0])
+                elif sample_index + 1 < len(samples):
+                    next_label = f"next sample {samples[sample_index + 1]}"
                 else:
-                    run_instance = processor.Runner(
-                        metadata_cache={},
-                        executor=processor.DaskExecutor(client=client, retries=2),
-                        schema=NanoAODSchema,
-                        savemetrics=True,
-                        skipbadfiles=skipbadfiles,
-                        chunksize=chunksize_dask,
-                        maxchunks=maxchunks,
-                    )
+                    next_label = "end of requested run"
 
-                    output, metrics = run_instance(
-                        fileset,
-                        treename="Events",
-                        processor_instance=TTbarResProcessor(
-                            iov=IOV,
-                            bkgEst=args.bkgest,
-                            noSyst=args.noSyst,
-                            deepAK8Cut=args.ttagWP,
-                            useDeepAK8=useDeepAK8,
-                            useDeepCSV=useDeepCSV,
-                            htCut=htCut,
-                            anacats=anacats,
-                            systematics=systematics,
-                            blinding=args.blind,
-                            produce_ntuple=args.ntuple,
-                            sample_metadata=sample_metadata,
-                        ),
+                if os.path.exists(savefilename) and not args.overwrite:
+                    _print_runner_block(
+                        [
+                            f"output already present: {savefilename}",
+                            f"skipping {section_label}",
+                        ]
                     )
+                    skipped_outputs.append((savefilename, sample, subsection))
+                    try:
+                        output = util.load(savefilename)
+                    except Exception as load_error:
+                        print(f"warning: could not load skipped output {savefilename}: {load_error}")
+                    continue
 
-                output["analysisCategories"] = label_map
-                util.save(output, savefilename)
-                print("saving", savefilename)
-                savefilenames.append((savefilename, sample))
+                try:
+                    if not args.dask:
+                        runner = processor.Runner(
+                            executor=processor.FuturesExecutor(workers=nworkers),
+                            schema=NanoAODSchema,
+                            chunksize=chunksize_futures,
+                            maxchunks=maxchunks,
+                            skipbadfiles=skipbadfiles,
+                            xrootdtimeout=500,
+                            savemetrics=True,
+                        )
+
+                        output, metrics = runner(
+                            fileset,
+                            treename="Events",
+                            processor_instance=TTbarResProcessor(
+                                iov=IOV,
+                                bkgEst=args.bkgest,
+                                noSyst=args.noSyst,
+                                deepAK8Cut=args.ttagWP,
+                                useDeepAK8=useDeepAK8,
+                                useDeepCSV=useDeepCSV,
+                                htCut=htCut,
+                                anacats=anacats,
+                                systematics=systematics,
+                                blinding=args.blind,
+                                debug=True,
+                                produce_ntuple=args.ntuple,
+                                sample_metadata=sample_metadata,
+                            ),
+                        )
+                    else:
+                        run_instance = processor.Runner(
+                            metadata_cache={},
+                            executor=processor.DaskExecutor(client=client, retries=2),
+                            schema=NanoAODSchema,
+                            savemetrics=True,
+                            skipbadfiles=skipbadfiles,
+                            chunksize=chunksize_dask,
+                            maxchunks=maxchunks,
+                        )
+
+                        output, metrics = run_instance(
+                            fileset,
+                            treename="Events",
+                            processor_instance=TTbarResProcessor(
+                                iov=IOV,
+                                bkgEst=args.bkgest,
+                                noSyst=args.noSyst,
+                                deepAK8Cut=args.ttagWP,
+                                useDeepAK8=useDeepAK8,
+                                useDeepCSV=useDeepCSV,
+                                htCut=htCut,
+                                anacats=anacats,
+                                systematics=systematics,
+                                blinding=args.blind,
+                                produce_ntuple=args.ntuple,
+                                sample_metadata=sample_metadata,
+                            ),
+                        )
+
+                    output["analysisCategories"] = label_map
+                    util.save(output, savefilename)
+                    print("saving", savefilename)
+                    savefilenames.append((savefilename, sample))
+                except Exception as exc:
+                    failures.append(
+                        {
+                            "sample": sample,
+                            "subsection": subsection,
+                            "savefilename": savefilename,
+                            "error": repr(exc),
+                        }
+                    )
+                    _print_runner_block(
+                        [
+                            f"crashed during {section_label}",
+                            f"moving on to {next_label}",
+                            "",
+                            traceback.format_exc().rstrip(),
+                        ]
+                    )
+                    continue
 
     elapsed = time.time() - tic
     printTime(elapsed)
@@ -714,6 +776,8 @@ def run_analysis(args):
         "metrics": metrics,
         "output": output,
         "savefilenames": savefilenames,
+        "skipped_outputs": skipped_outputs,
+        "failures": failures,
     }
 ```
 
@@ -752,7 +816,7 @@ for key in output:
 ```
 
 ```python
-output["normalization"]["xsec_pb"]
+output["normalization"]["applied"]
 ```
 
 ```python
