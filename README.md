@@ -82,6 +82,7 @@ Common options:
 | `--iov` | Year: `2022`, `2023`, `2024` |
 | `--dataset` | `data`, `TTbar`, `QCD`, `ZPrime1`, `ZPrime10`, `ZPrime30`, `ZPrimeDM`, `RSGluon`, `ZPrimeLocal` |
 | `--era` | Filter to specific era(s), e.g. `--era C --era D` |
+| `--subsample` | Run a specific manifest subsection, e.g. `--subsample QCD_PT-1000to1500` |
 | `--noSyst` | Run nominal only (no systematics) |
 | `--ntuple` | Collect flat per-event ntuple in the `.coffea` output |
 | `--test` | Run on 1 chunk with 1 worker |
@@ -93,6 +94,12 @@ Common options:
 | `-r` | XRootD redirector URL (default: `root://cmsxrootd.fnal.gov/`) |
 
 For now the analysis can run on 2022, 2023, and 2024 datasets.
+
+Example for a single QCD pT bin:
+
+```bash
+python ttbaranalysis.py --iov 2024 --dataset QCD --subsample QCD_PT-1000to1500
+```
 
 ## Output
 

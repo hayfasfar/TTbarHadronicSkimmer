@@ -23,6 +23,46 @@ from ttbarprocessor import TTbarResProcessor
 from python.functions import printTime, makeSaveDirectories
 
 
+def _build_sample_metadata(sample, subsection, iov, metadata):
+    sample_metadata = {
+        'sample': sample,
+        'subsample': subsection or sample,
+        'year': iov,
+        'is_mc': not (('data' in sample.lower()) or ('singlemu' in sample.lower())),
+    }
+    sample_metadata.update(metadata)
+    return sample_metadata
+
+
+def _parse_manifest_entry(sample, subsection, iov, entry):
+    if isinstance(entry, dict) and 'files' in entry:
+        files = entry['files']
+        metadata = dict(entry.get('metadata', {}))
+    else:
+        files = entry
+        metadata = {}
+
+    return list(files), _build_sample_metadata(sample, subsection, iov, metadata)
+
+
+def _collect_manifest_sections(sample, iov, manifest, subsections):
+    iov_entry = manifest[iov]
+
+    if isinstance(iov_entry, dict) and 'files' not in iov_entry:
+        requested_sections = subsections if subsections else list(iov_entry.keys())
+        entries = []
+        for subsection in requested_sections:
+            if subsection not in iov_entry:
+                print(f'{subsection} not in {sample} {iov}')
+                continue
+            files, metadata = _parse_manifest_entry(sample, subsection, iov, iov_entry[subsection])
+            entries.append((subsection, files, metadata))
+        return entries
+
+    files, metadata = _parse_manifest_entry(sample, '', iov, iov_entry)
+    return [('', files, metadata)]
+
+
 if __name__ == "__main__":
 
     tic = time.time()
@@ -49,6 +89,8 @@ if __name__ == "__main__":
     parser.add_argument('-p', '--pt', choices=['700to1000', '1000toInf'],
                         action='append', default=[])
     parser.add_argument('-m', '--mass', action='append', default=[])
+    parser.add_argument('--subsample', action='append', default=[],
+                        help='run specific manifest subsection(s), e.g. --subsample QCD_PT-1000to1500')
 
     # analysis options
     parser.add_argument('--blind',    action='store_true', help='process 1/10th of the data')
@@ -163,31 +205,29 @@ if __name__ == "__main__":
         inputfile = jsonfiles[sample]
 
         with open(inputfile) as json_file:
-            subsections = args.era + args.mass + args.pt
-            data = json.load(json_file)
-            filedict = {}
-            try:
-                data[IOV].keys()
-                if len(subsections) > 0:
-                    for s in subsections:
-                        if s in data[IOV].keys():
-                            filedict[s] = data[IOV][s]
-                        else:
-                            print(f'{s} not in {sample} {IOV}')
-                else:
-                    filedict = data[IOV]
-            except Exception:
-                filedict[''] = data[IOV]
+            subsections = args.era + args.mass + args.pt + args.subsample
+            manifest = json.load(json_file)
+            sections = _collect_manifest_sections(
+                sample=sample,
+                iov=IOV,
+                manifest=manifest,
+                subsections=subsections,
+            )
 
-            for subsection, files in filedict.items():
+            for subsection, files, sample_metadata in sections:
                 files = [redirector + f for f in files]
                 if args.test:
                     files = [files[int(len(files) / 2)]]
 
-                fileset   = {sample: files}
+                fileset = {
+                    sample: {
+                        'files': files,
+                        'metadata': sample_metadata,
+                    }
+                }
                 print(files[0])
 
-                subString = subsection.replace('700to', '_700to').replace('1000to', '_1000to')
+                subString = f'_{subsection}' if subsection else ''
                 if args.bkgest:
                     subString += '_bkgest'
                 if (args.toptagger == 'cmsv2') and (args.btagger == 'csvv2'):
@@ -230,6 +270,7 @@ if __name__ == "__main__":
                     systematics=systematics,
                     blinding=args.blind,
                     produce_ntuple=args.ntuple,
+                    sample_metadata=sample_metadata,
                 )
 
                 if not args.dask:

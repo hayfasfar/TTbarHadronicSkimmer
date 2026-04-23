@@ -72,8 +72,7 @@ DEFAULTS = dict(
     dataset=["ZPrimeLocal"],
     signals=False,
     iov="2024",
-    era=[],
-    pt=[],
+    subsample=[],
     mass="",
     blind=False,
     bkgest=None,
@@ -119,8 +118,6 @@ _dataset_opts = [
     "RSGluon",
     "ZPrimeLocal",
 ]
-_era_opts = ["A", "B", "C", "D", "E", "F", "G", "H", "I"]
-_pt_opts = ["700to1000", "1000toInf"]
 _redirector_opts = [
     ("Local (rootfiles/)", "rootfiles/"),
     ("FNAL XRootD (root://cmsxrootd.fnal.gov/)", "root://cmsxrootd.fnal.gov/"),
@@ -129,6 +126,45 @@ _redirector_opts = [
 ]
 _redirector_vals = [v for _, v in _redirector_opts]
 _env_opts = ["casa", "lpc", "winterfell", "local"]
+_manifest_files = {
+    "data": "data/nanoAOD/data.json",
+    "QCD": "data/nanoAOD/QCD.json",
+    "TTbar": "data/nanoAOD/TTbar.json",
+    "ZPrime1": "data/nanoAOD/ZPrime1.json",
+    "ZPrime10": "data/nanoAOD/ZPrime10.json",
+    "ZPrime30": "data/nanoAOD/ZPrime30.json",
+    "ZPrimeDM": "data/nanoAOD/ZPrimeDM.json",
+    "RSGluon": "data/nanoAOD/RSGluon.json",
+    "ZPrimeLocal": "data/nanoAOD/local_xsec_test.json",
+}
+
+
+def _manifest_subsections(dataset, iov):
+    path = _manifest_files.get(dataset)
+    if not path or not os.path.exists(path):
+        return []
+
+    try:
+        with open(path) as f:
+            manifest = json.load(f)
+    except Exception:
+        return []
+
+    entry = manifest.get(iov)
+    if isinstance(entry, dict) and "files" not in entry:
+        return list(entry.keys())
+    return []
+
+
+def _available_subsamples(datasets, iov):
+    subsamples = []
+    seen = set()
+    for dataset in datasets:
+        for subsection in _manifest_subsections(dataset, iov):
+            if subsection not in seen:
+                seen.add(subsection)
+                subsamples.append(subsection)
+    return subsamples
 
 # ── Widget definitions ─────────────────────────────────────────────────────────
 w_dataset = widgets.SelectMultiple(
@@ -148,19 +184,12 @@ w_iov = widgets.Dropdown(
     style=style,
     layout=layout,
 )
-w_era = widgets.SelectMultiple(
-    options=_era_opts,
-    value=tuple(v for v in cfg["era"] if v in _era_opts),
-    description="Era",
+w_subsample = widgets.SelectMultiple(
+    options=[],
+    value=tuple(cfg["subsample"]),
+    description="Subsample",
     style=style,
-    layout=widgets.Layout(width="210px", height="120px"),
-)
-w_pt = widgets.SelectMultiple(
-    options=_pt_opts,
-    value=tuple(v for v in cfg["pt"] if v in _pt_opts),
-    description="pT bin",
-    style=style,
-    layout=widgets.Layout(width="210px", height="55px"),
+    layout=widgets.Layout(width="260px", height="140px"),
 )
 w_mass = widgets.Text(
     value=cfg["mass"],
@@ -247,8 +276,7 @@ WIDGETS = {
     "dataset": w_dataset,
     "signals": w_signals,
     "iov": w_iov,
-    "era": w_era,
-    "pt": w_pt,
+    "subsample": w_subsample,
     "mass": w_mass,
     "blind": w_blind,
     "bkgest": w_bkgest,
@@ -285,8 +313,21 @@ def reset_to_defaults(_):
         w.value = tuple(default) if isinstance(w, _MULTI) else default
 
 
+def refresh_subsample_options(_=None):
+    selected_datasets = list(default_signals) if w_signals.value else list(w_dataset.value)
+    options = _available_subsamples(selected_datasets, w_iov.value)
+    current = [v for v in w_subsample.value if v in options]
+    w_subsample.options = options
+    w_subsample.value = tuple(current)
+
+
 for w in WIDGETS.values():
     w.observe(save_config, names="value")
+
+for w in (w_dataset, w_iov, w_signals):
+    w.observe(refresh_subsample_options, names="value")
+
+refresh_subsample_options()
 
 btn_reset = widgets.Button(
     description="↺ Reset to Defaults",
@@ -303,7 +344,7 @@ col1 = widgets.VBox(
     layout=widgets.Layout(margin="0 8px 0 0"),
 )
 col2 = widgets.VBox(
-    [hdr("Subsections"), w_era, w_pt, w_mass],
+    [hdr("Subsections"), w_subsample, w_mass],
     layout=widgets.Layout(margin="0 8px 0 0"),
 )
 col3 = widgets.VBox(
@@ -357,6 +398,8 @@ def build_args():
 
     cfg = {k: _widget_value(w) for k, w in WIDGETS.items()}
     cfg["dataset"] = selected_datasets
+    cfg["era"] = []
+    cfg["pt"] = []
     cfg["mass"] = mass_list
     return SimpleNamespace(**cfg)
 
@@ -424,6 +467,65 @@ def _print_runner_block(lines, rule_char="-", width=66):
     for line in lines:
         print(line)
     print(rule_char * width)
+
+
+def _close_dask_resources(client, cluster):
+    if client is not None:
+        client.close()
+    if cluster is not None:
+        cluster.close()
+    return None, None
+
+
+def _start_dask_resources(args, repo_root, upload_to_dask, dask_memory, nworkers):
+    client = None
+    cluster = None
+
+    if not args.dask:
+        return client, cluster
+
+    if args.env == "lpc":
+        if not args.nocluster:
+            cluster = LPCCondorCluster(
+                memory=dask_memory,
+                transfer_input_files=upload_to_dask,
+                scheduler_options={"dashboard_address": ":8787"},
+            )
+            cluster.adapt(minimum=1, maximum=100)
+    elif args.env == "casa":
+        if not args.nocluster:
+            from coffea_casa import CoffeaCasaCluster
+
+            cluster = CoffeaCasaCluster(memory=dask_memory)
+            cluster.adapt(minimum=4, maximum=400)
+    else:
+        cluster = dask.distributed.LocalCluster(
+            n_workers=nworkers,
+            threads_per_worker=1,
+            scheduler_port=0,
+            dashboard_address=":8787",
+        )
+
+    client = Client(cluster)
+
+    if args.env == "casa" and not args.nocluster:
+        from distributed.diagnostics.plugin import UploadDirectory
+
+        client.register_worker_plugin(
+            UploadDirectory(
+                os.path.join(repo_root, "data"), restart=True, update_path=True
+            ),
+            nanny=True,
+        )
+        client.register_worker_plugin(
+            UploadDirectory(
+                os.path.join(repo_root, "python"), restart=True, update_path=True
+            ),
+            nanny=True,
+        )
+        client.upload_file(os.path.join(repo_root, "ttbarprocessor.py"))
+
+    return client, cluster
 
 
 def run_analysis(args):
@@ -553,52 +655,22 @@ def run_analysis(args):
     # ── Dask cluster/client: created once and reused across all samples ────────
     client = None
     cluster = None
-    if args.dask:
-        if args.env == "lpc":
-            if not args.nocluster:
-                cluster = LPCCondorCluster(
-                    memory=dask_memory,
-                    transfer_input_files=upload_to_dask,
-                    scheduler_options={"dashboard_address": ":8787"},
-                )
-                cluster.adapt(minimum=1, maximum=100)
-        elif args.env == "casa":
-            if not args.nocluster:
-                from coffea_casa import CoffeaCasaCluster
-
-                cluster = CoffeaCasaCluster(memory=dask_memory)
-                cluster.adapt(minimum=4, maximum=400)
-        else:
-            cluster = dask.distributed.LocalCluster(
-                n_workers=nworkers,
-                threads_per_worker=1,
-                scheduler_port=0,
-                dashboard_address=":8787",
-            )
-        client = Client(cluster)
-        if args.env == "casa" and not args.nocluster:
-            from distributed.diagnostics.plugin import UploadDirectory
-
-            client.register_worker_plugin(
-                UploadDirectory(
-                    os.path.join(repo_root, "data"), restart=True, update_path=True
-                ),
-                nanny=True,
-            )
-            client.register_worker_plugin(
-                UploadDirectory(
-                    os.path.join(repo_root, "python"), restart=True, update_path=True
-                ),
-                nanny=True,
-            )
-            client.upload_file(os.path.join(repo_root, "ttbarprocessor.py"))
+    client, cluster = _start_dask_resources(
+        args=args,
+        repo_root=repo_root,
+        upload_to_dask=upload_to_dask,
+        dask_memory=dask_memory,
+        nworkers=nworkers,
+    )
 
     for sample_index, sample in enumerate(samples):
         skipbadfiles = False
         inputfile = jsonfiles[sample]
 
         with open(inputfile) as json_file:
-            subsections = args.era + args.mass + args.pt
+            subsections = (
+                args.era + args.mass + args.pt + getattr(args, "subsample", [])
+            )
             manifest = json.load(json_file)
             sections = _collect_manifest_sections(
                 sample=sample,
@@ -607,7 +679,9 @@ def run_analysis(args):
                 subsections=subsections,
             )
 
-            for section_index, (subsection, files, sample_metadata) in enumerate(sections):
+            for section_index, (subsection, files, sample_metadata) in enumerate(
+                sections
+            ):
                 files = [redirector + f for f in files]
                 if args.test:
                     files = [files[int(len(files) / 2)]]
@@ -622,9 +696,7 @@ def run_analysis(args):
 
                 print(files[0])
 
-                subString = subsection.replace("700to", "_700to").replace(
-                    "1000to", "_1000to"
-                )
+                subString = f"_{subsection}" if subsection else ""
                 if args.bkgest:
                     subString += "_bkgest"
 
@@ -657,7 +729,9 @@ def run_analysis(args):
 
                 section_label = _format_section_label(IOV, sample, subsection)
                 if section_index + 1 < len(sections):
-                    next_label = _format_section_label(IOV, sample, sections[section_index + 1][0])
+                    next_label = _format_section_label(
+                        IOV, sample, sections[section_index + 1][0]
+                    )
                 elif sample_index + 1 < len(samples):
                     next_label = f"next sample {samples[sample_index + 1]}"
                 else:
@@ -674,7 +748,9 @@ def run_analysis(args):
                     try:
                         output = util.load(savefilename)
                     except Exception as load_error:
-                        print(f"warning: could not load skipped output {savefilename}: {load_error}")
+                        print(
+                            f"warning: could not load skipped output {savefilename}: {load_error}"
+                        )
                     continue
 
                 try:
@@ -754,11 +830,26 @@ def run_analysis(args):
                     _print_runner_block(
                         [
                             f"crashed during {section_label}",
-                            f"moving on to {next_label}",
+                            f"next queued section: {next_label}",
                             "",
                             traceback.format_exc().rstrip(),
                         ]
                     )
+                    if args.dask:
+                        _print_runner_block(
+                            [
+                                "restarting Dask client after section failure",
+                                f"will retry scheduling from {next_label}",
+                            ]
+                        )
+                        client, cluster = _close_dask_resources(client, cluster)
+                        client, cluster = _start_dask_resources(
+                            args=args,
+                            repo_root=repo_root,
+                            upload_to_dask=upload_to_dask,
+                            dask_memory=dask_memory,
+                            nworkers=nworkers,
+                        )
                     continue
 
     elapsed = time.time() - tic
@@ -766,10 +857,14 @@ def run_analysis(args):
     if metrics is not None:
         print(f"Events/s: {metrics['entries'] / elapsed:.0f}")
 
-    if client is not None:
-        client.close()
-    if cluster is not None:
-        cluster.close()
+    print(
+        "run summary:",
+        f"saved={len(savefilenames)}",
+        f"skipped={len(skipped_outputs)}",
+        f"failed={len(failures)}",
+    )
+
+    client, cluster = _close_dask_resources(client, cluster)
 
     return {
         "elapsed": elapsed,
