@@ -377,31 +377,15 @@ class TTbarResProcessor(processor.ProcessorABC):
         nEvents = len(events.event)
         self.logger.debug('preprocessor input: dataset=%s, events=%d', dataset, nEvents)
 
-        # remove QCD events with large gen weights or below the HT bin threshold
+        # remove QCD events with large gen weights
         if "QCD" in dataset:
-            binvar_mask = events.Generator.binvar > _QCD_BINVAR_MIN
-            n_pass_binvar = int(ak.sum(binvar_mask))
-            if nEvents > 0:
-                binvar_min = float(ak.min(events.Generator.binvar))
-                binvar_max = float(ak.max(events.Generator.binvar))
-            else:
-                binvar_min = None
-                binvar_max = None
-            self.logger.debug(
-                'QCD binvar filter: before=%d, pass=%d, fail=%d, threshold>%s, '
-                'binvar_min=%s, binvar_max=%s',
-                nEvents, n_pass_binvar, nEvents - n_pass_binvar,
-                _QCD_BINVAR_MIN, binvar_min, binvar_max,
-            )
-            events = events[binvar_mask]
-
             if dataset not in self.means_stddevs:
                 average = np.average(events.genWeight)
                 stddev  = np.std(events.genWeight)
                 self.means_stddevs[dataset] = (average, stddev)
             average, stddev = self.means_stddevs[dataset]
             self.logger.debug(
-                'QCD genWeight stats: after_binvar=%d, average=%s, stddev=%s',
+                'QCD genWeight stats: before=%d, average=%s, stddev=%s',
                 len(events), average, stddev,
             )
             vals = (events.genWeight - average) / stddev
