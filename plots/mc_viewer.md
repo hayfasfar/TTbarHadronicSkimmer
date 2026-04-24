@@ -192,7 +192,7 @@ def sort_legend_entries(handles, labels):
     def key(item):
         _, label = item
         qcd_match = re.match(r"QCD (\d+)-(\d+|Inf)$", label)
-        if label == r"$t\bar{t}$":
+        if label in {r"$t\bar{t}$", "TTbar"}:
             return (0, 0)
         if qcd_match:
             return (1, int(qcd_match.group(1)))
@@ -273,12 +273,15 @@ for var, xlabel in plot_specs:
         stack_labels = []
         stack_colors = []
         for sample_name in stack_sample_names:
+            style = sample_style[sample_name]
             try:
                 hists, labels = get_sample_component_hists(
                     sample_name, var, anacat_id=cat_id
                 )
             except Exception:
                 continue
+            if len(labels) == 1:
+                labels = [style["label"]]
             stack_hists.extend(hists)
             stack_labels.extend(labels)
             stack_colors.extend(component_colors(sample_name, len(hists)))
