@@ -318,6 +318,7 @@ class TTbarResProcessor(processor.ProcessorABC):
         kw = dict(systematic=systematic, anacat=i)
         output['jetmsd'].fill(      **kw, jetmsd=jetmsd[icat],         weight=w)
         output['ttbarmass'].fill(   **kw, ttbarmass=ttbarmass[icat],   weight=w)
+        output['mtt_vs_mt'].fill(   **kw, jetmass=jetmsd[icat], ttbarmass=ttbarmass[icat], weight=w)
         output['jetmsd1'].fill(     **kw, jetmsd=jetmsd1[icat],        weight=w)
         output['jetdy'].fill(       **kw, jetdy=rapidity[icat],         weight=w)
         output['chi'].fill(         **kw, chi=chi[icat],                weight=w)

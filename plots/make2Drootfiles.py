@@ -34,23 +34,28 @@ antitag_cats = [ i for label, i in label_to_int.items() if 'at' in label]
 toc = time.time()
 
 if (len(sys.argv) > 1) and (sys.argv[1] in ['2016', '2017', '2018', 'all']):
-    
+
     year = sys.argv[1]
 
 else:
 
     year = '2016all'
 
+nominal_only = any(a in ('--noSyst', '--nominal', 'nominal') for a in sys.argv[1:])
+
 systematics = ['nominal', 'jes', 'jer', 'pileup', 'pdf', 'q2', 'prefiring','ttag_jet0_pt1','ttag_jet0_pt2','ttag_jet0_pt3', 'ttag_jet1_pt1','ttag_jet1_pt2','ttag_jet1_pt3']
 syst_labels = ['nominal']
-if '2018' in year: 
+if '2018' in year:
     systematics = ['nominal', 'jes', 'jer', 'pileup', 'pdf', 'q2','ttag_jet0_pt1','ttag_jet0_pt2','ttag_jet0_pt3', 'ttag_jet1_pt1','ttag_jet1_pt2','ttag_jet1_pt3']
+
+if nominal_only:
+    systematics = ['nominal']
 
 for s in systematics:
     if not 'nominal' in s and not 'hem' in s:
         syst_labels.append(s+'Down')
         syst_labels.append(s+'Up')
-        
+
 print(syst_labels)
 
 
