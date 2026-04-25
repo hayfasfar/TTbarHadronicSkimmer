@@ -34,6 +34,12 @@ def _build_sample_metadata(sample, subsection, iov, metadata):
     return sample_metadata
 
 
+def _output_subsection(sample, subsection):
+    if sample == 'QCD' and subsection and subsection.startswith('QCD_'):
+        return subsection.removeprefix('QCD_')
+    return subsection
+
+
 def _parse_manifest_entry(sample, subsection, iov, entry):
     if isinstance(entry, dict) and 'files' in entry:
         files = entry['files']
@@ -227,7 +233,8 @@ if __name__ == "__main__":
                 }
                 print(files[0])
 
-                subString = f'_{subsection}' if subsection else ''
+                output_subsection = _output_subsection(sample, subsection)
+                subString = f'_{output_subsection}' if output_subsection else ''
                 if args.bkgest:
                     subString += '_bkgest'
                 if (args.toptagger == 'cmsv2') and (args.btagger == 'csvv2'):
@@ -235,10 +242,10 @@ if __name__ == "__main__":
 
                 savefilename = f'{savedir}{sample}_{IOV}{subString}.coffea'
                 if 'RSGluon' in sample:
-                    subString = subString.replace(subsection, '')
+                    subString = subString.replace(output_subsection, '')
                     savefilename = f'{savedir}{sample}{subsection}_{IOV}{subString}.coffea'
                 elif 'ZPrime' in sample:
-                    subString = subString.replace(subsection, '')
+                    subString = subString.replace(output_subsection, '')
                     savefilename = f'{savedir}ZPrime{subsection}_{sample.replace("ZPrime","")}_{IOV}{subString}.coffea'
 
                 print(f'running {IOV} {sample} {subsection}')

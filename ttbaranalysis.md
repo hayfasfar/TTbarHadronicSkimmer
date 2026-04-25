@@ -110,6 +110,7 @@ layout_wide = widgets.Layout(width="260px")
 _dataset_opts = [
     "data",
     "QCD",
+    "QCD_flat",
     "TTbar",
     "ZPrime1",
     "ZPrime10",
@@ -135,6 +136,7 @@ _ht_opts = ["1400", "950"]
 _manifest_files = {
     "data": "data/nanoAOD/data.json",
     "QCD": "data/nanoAOD/QCD.json",
+    "QCD_flat": "data/nanoAOD/QCD_flat.json",
     "TTbar": "data/nanoAOD/TTbar.json",
     "ZPrime1": "data/nanoAOD/ZPrime1.json",
     "ZPrime10": "data/nanoAOD/ZPrime10.json",
@@ -464,6 +466,12 @@ def _build_sample_metadata(sample, subsection, iov, metadata):
     return sample_metadata
 
 
+def _output_subsection(sample, subsection):
+    if sample == "QCD" and subsection and subsection.startswith("QCD_"):
+        return subsection.removeprefix("QCD_")
+    return subsection
+
+
 def _parse_manifest_entry(sample, subsection, iov, entry):
     if isinstance(entry, dict) and "files" in entry:
         files = entry["files"]
@@ -626,6 +634,7 @@ def run_analysis(args):
     jsonfiles = {
         "data": "data/nanoAOD/data.json",
         "QCD": "data/nanoAOD/QCD.json",
+        "QCD_flat": "data/nanoAOD/QCD_flat.json",
         "TTbar": "data/nanoAOD/TTbar.json",
         "ZPrime1": "data/nanoAOD/ZPrime1.json",
         "ZPrime10": "data/nanoAOD/ZPrime10.json",
@@ -733,7 +742,8 @@ def run_analysis(args):
 
                 print(files[0])
 
-                subString = f"_{subsection}" if subsection else ""
+                output_subsection = _output_subsection(sample, subsection)
+                subString = f"_{output_subsection}" if output_subsection else ""
                 if args.bkgest:
                     subString += "_bkgest"
 
@@ -742,12 +752,12 @@ def run_analysis(args):
 
                 savefilename = f"{savedir}{sample}_{IOV}{subString}.coffea"
                 if "RSGluon" in sample:
-                    subString = subString.replace(subsection, "")
+                    subString = subString.replace(output_subsection, "")
                     savefilename = (
                         f"{savedir}{sample}{subsection}_{IOV}{subString}.coffea"
                     )
                 elif "ZPrime" in sample:
-                    subString = subString.replace(subsection, "")
+                    subString = subString.replace(output_subsection, "")
                     savefilename = f'{savedir}ZPrime{subsection}_{sample.replace("ZPrime", "")}_{IOV}{subString}.coffea'
                 print(f"running {IOV} {sample} {subsection}")
 

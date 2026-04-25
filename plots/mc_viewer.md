@@ -6,9 +6,9 @@ jupyter:
       extension: .md
       format_name: markdown
       format_version: '1.3'
-      jupytext_version: 1.19.1
+      jupytext_version: 1.19.0
   kernelspec:
-    display_name: coffea_latest
+    display_name: Python 3 (ipykernel)
     language: python
     name: python3
 ---
@@ -38,12 +38,13 @@ hplot.setup(era="2024")
 ```
 
 ```python
-# ── Load MC samples ──────────────────────────────────────────────────────────
+# ── Load samples ──────────────────────────────────────────────────────────────
 coffea_dir = Path("./outputs/dy")
+data_eras = ["2024C", "2024D", "2024E", "2024F", "2024G", "2024H"]
 
 
 def _qcd_pt_sort_key(path):
-    match = re.search(r"QCD_PT-(\d+)to(\d+|Inf)", path.name)
+    match = re.search(r"(?:QCD_)?PT-(\d+)to(\d+|Inf)", path.name)
     if match is None:
         return (float("inf"), float("inf"), path.name)
     low = int(match.group(1))
@@ -52,50 +53,38 @@ def _qcd_pt_sort_key(path):
 
 
 def _qcd_pt_label(path):
-    match = re.search(r"QCD_PT-(\d+)to(\d+|Inf)", path.name)
+    match = re.search(r"(?:QCD_)?PT-(\d+)to(\d+|Inf)", path.name)
     if match is None:
         return path.stem
     return f"QCD {match.group(1)}-{match.group(2)}"
 
 
-def _load_components(paths, label_fn):
+def _load_components(paths):
     paths = sorted(paths, key=_qcd_pt_sort_key)
     if not paths:
         raise FileNotFoundError(
-            f"No QCD pT-bin files found in {coffea_dir} matching "
-            "'QCD_2024_QCD_PT-*to*_noSyst.coffea'"
+            f"No QCD pT-bin files found in {coffea_dir} matching the 2024 QCD pattern"
         )
-    return {label_fn(path): load(path) for path in paths}
+    return [(_qcd_pt_label(path), load(path)) for path in paths]
 
 
-qcd_pt_paths = coffea_dir.glob("QCD_2024_QCD_PT-*to*_noSyst.coffea")
-
-samples = {
-    "TTbar": {"TTbar": load(coffea_dir / "TTbar_2024inclusive_noSyst.coffea")},
-    "QCD": _load_components(qcd_pt_paths, _qcd_pt_label),
-    #'ZPrime4000': {"Z' (4 TeV)": load(coffea_dir / 'ZPrime4000_1_2024_noSyst.coffea')},
-}
-
-# Convenience: colors and display labels per sample
-sample_style = {
-    "TTbar": {"color": CMS_COLORS[0], "label": r"$t\bar{t}$", "stack": True},
-    "QCD": {"color": CMS_COLORS[1], "label": "QCD", "stack": True, "cmap": "tab20"},
-    "ZPrime4000": {"color": CMS_COLORS[2], "label": "Z' (4 TeV)", "stack": False},
-}
-
-print("Loaded MC components:")
-for sample_name, components in samples.items():
-    print(f"  {sample_name}: {', '.join(components)}")
-```
-
-```python
-# ── Load data (sum over all eras) ─────────────────────────────────────────────
-data_eras = ["2024C", "2024D", "2024E", "2024F", "2024G", "2024H"]
+ttbar_output = load(coffea_dir / "TTbar_2024_inclusive_noSyst.coffea")
+qcd_paths = list(coffea_dir.glob("QCD_2024*_PT-*to*_noSyst.coffea"))
+qcd_components = _load_components(qcd_paths)
 data_outputs = [load(f"./outputs/dy/data_{era}_noSyst.coffea") for era in data_eras]
+
+print("Loaded:")
+print("  TTbar")
+print("  QCD:", ", ".join(label for label, _ in qcd_components))
+print("  Data:", ", ".join(data_eras))
 ```
 
 ```python
-# ── Helpers ───────────────────────────────────────────────────────────────────
+print(qcd_paths)
+```
+
+```python
+# ── Small plotting helpers ────────────────────────────────────────────────────
 def _plot_axis_name(h):
     axis_names = [axis.name for axis in h.axes]
     candidates = [name for name in axis_names if name not in {"systematic", "anacat"}]
@@ -104,19 +93,13 @@ def _plot_axis_name(h):
     return candidates[0]
 
 
-def get_hist(output, var, anacat_id=None, syst="nominal"):
-    """Fetch histogram `var` from a single MC output, project to 1D."""
+def get_hist(output, var, anacat_id, syst="nominal"):
     h = output[var][syst, ...]
     axis_name = _plot_axis_name(h)
-    if anacat_id is not None:
-        h = h[anacat_id, :].project(axis_name)
-    else:
-        h = h.project(axis_name)
-    return h
+    return h[anacat_id, :].project(axis_name)
 
 
 def sum_hists(hists):
-    """Return the bin-by-bin sum of a non-empty list of hist histograms."""
     if not hists:
         raise ValueError("Need at least one histogram to sum")
     result = hists[0]
@@ -125,8 +108,21 @@ def sum_hists(hists):
     return result
 
 
+def scaled_qcd_hists(var, anacat_id, h_data, h_ttbar):
+    """Scale QCD so integral(QCD) = integral(data) - integral(TTbar)."""
+    raw_hists = [get_hist(output, var, anacat_id) for _, output in qcd_components]
+    raw_total = sum_hists(raw_hists).sum().value
+    target = h_data.sum().value - h_ttbar.sum().value
+    scale = max(target, 0.0) / raw_total if raw_total > 0 else 0.0
+    if target < 0:
+        print(
+            f"Warning: data - TTbar is negative for {var}, anacat={anacat_id}; "
+            "setting QCD scale to 0."
+        )
+    return [scale * h for h in raw_hists], scale, target
+
+
 def draw_uncertainty_band(ax, h, *, label, density=False, hatch="///", zorder=2):
-    """Draw the statistical uncertainty of a 1D hist as a hatched band."""
     variances = h.variances()
     if variances is None:
         return
@@ -157,30 +153,8 @@ def draw_uncertainty_band(ax, h, *, label, density=False, hatch="///", zorder=2)
     )
 
 
-def get_sample_component_hists(sample_name, var, anacat_id=None, syst="nominal"):
-    """Fetch 1D histograms for every loaded component of one sample."""
-    hists = []
-    labels = []
-    for component_label, output in samples[sample_name].items():
-        hists.append(get_hist(output, var, anacat_id=anacat_id, syst=syst))
-        labels.append(component_label)
-    return hists, labels
-
-
-def get_sample_hist(sample_name, var, anacat_id=None, syst="nominal"):
-    """Fetch one sample histogram, summing components when needed."""
-    hists, _ = get_sample_component_hists(
-        sample_name, var, anacat_id=anacat_id, syst=syst
-    )
-    return sum_hists(hists)
-
-
-def component_colors(sample_name, n):
-    """Return one color per component, using a colormap for stacked samples."""
-    style = sample_style[sample_name]
-    if n == 1 or "cmap" not in style:
-        return [style["color"]] * n
-    cmap = plt.get_cmap(style["cmap"])
+def qcd_colors(n):
+    cmap = plt.get_cmap("tab20")
     if hasattr(cmap, "colors"):
         color_order = list(range(0, cmap.N, 2)) + list(range(1, cmap.N, 2))
         return [cmap(color_order[i % cmap.N]) for i in range(n)]
@@ -188,11 +162,10 @@ def component_colors(sample_name, n):
 
 
 def sort_legend_entries(handles, labels):
-    """Order legend entries with QCD pT bins from low to high."""
     def key(item):
         _, label = item
         qcd_match = re.match(r"QCD (\d+)-(\d+|Inf)$", label)
-        if label in {r"$t\bar{t}$", "TTbar"}:
+        if label == r"$t\bar{t}$":
             return (0, 0)
         if qcd_match:
             return (1, int(qcd_match.group(1)))
@@ -206,151 +179,104 @@ def sort_legend_entries(handles, labels):
     return zip(*entries) if entries else ([], [])
 
 
-def get_data_hist(var, anacat_id=None, syst="nominal"):
-    """Fetch histogram `var` from all data eras and return their sum."""
-    hists = []
-    for o in data_outputs:
-        h = o[var][syst, ...]
-        axis_name = _plot_axis_name(h)
-        if anacat_id is not None:
-            h = h[anacat_id, :].project(axis_name)
-        else:
-            h = h.project(axis_name)
-        hists.append(h)
-    return sum_hists(hists)
+def get_data_hist(var, anacat_id, syst="nominal"):
+    return sum_hists([get_hist(output, var, anacat_id, syst) for output in data_outputs])
 ```
 
 ```python
 # Inspect available keys and categories (use any sample as reference)
-ref = next(iter(next(iter(samples.values())).values()))
+ref = ttbar_output
 print("Histogram keys:", list(ref.keys()))
 print("Categories:", ref["analysisCategories"])
 ```
 
 ## Per-sample distributions — central and forward categories
 
-Each row: one variable.  
-Left column: central (`|Δy| < 1`), right column: forward (`|Δy| > 1`).  
-TTbar and QCD pT bins are drawn as one visible MC stack, with a hatched total-MC uncertainty band.
+Each row: one variable.
+Left column: central (`|Δy| < 1`), right column: forward (`|Δy| > 1`).
+
+TTbar keeps its MC normalization. QCD pT bins keep their relative shapes, but their total
+normalization is set from data:
+
+`sum(QCD) = sum(data) - sum(TTbar)`
 
 ```python
 plot_specs = [
     ("ttbarmass", r"$m_{t\bar{t}}$ [GeV]"),
     ("jetmsd", r"Leading jet $m_{SD}$ [GeV]"),
-    ("jetmsd1", r"Subleading jet $m_{SD}$ [GeV]"),
-    ("jet0_pt", r"Leading jet $p_T$ [GeV]"),
-    ("jet0_eta", r"Leading jet $\eta$"),
-    ("jet0_phi", r"Leading jet $\phi$"),
-    ("jet0_rapidity", r"Leading jet rapidity"),
-    ("jet1_pt", r"Subleading jet $p_T$ [GeV]"),
-    ("jet1_eta", r"Subleading jet $\eta$"),
-    ("jet1_phi", r"Subleading jet $\phi$"),
-    ("jet1_rapidity", r"Subleading jet rapidity"),
-    ("jetdy", r"$\Delta y$"),
-    ("ht", r"$H_T$ [GeV]"),
+    # ("jetmsd1", r"Subleading jet $m_{SD}$ [GeV]"),
+    # ("jet0_pt", r"Leading jet $p_T$ [GeV]"),
+    # ("jet0_eta", r"Leading jet $\eta$"),
+    # ("jet0_phi", r"Leading jet $\phi$"),
+    # ("jet0_rapidity", r"Leading jet rapidity"),
+    # ("jet1_pt", r"Subleading jet $p_T$ [GeV]"),
+    # ("jet1_eta", r"Subleading jet $\eta$"),
+    # ("jet1_phi", r"Subleading jet $\phi$"),
+    # ("jet1_rapidity", r"Subleading jet rapidity"),
+    # ("jetdy", r"$\Delta y$"),
+    # ("ht", r"$H_T$ [GeV]"),
 ]
 
 # anacat IDs: 0=atcen, 1=atfwd, 2=2tcen, 3=2tfwd
 cat_pairs = [
-    (0, r"$|\Delta y| < 1$  (at least 1 top-tagged)"),
-    (1, r"$|\Delta y| > 1$  (at least 1 top-tagged)"),
+    (0, r"$|\Delta y| < 1$  (FAIL region)"),
+    (1, r"$|\Delta y| > 1$  (FAIL region)"),
 ]
 
 plot_density = False
-stack_sample_names = [
-    name for name in samples if sample_style[name].get("stack", False)
-]
-overlay_sample_names = [
-    name for name in samples if not sample_style[name].get("stack", False)
-]
 
 for var, xlabel in plot_specs:
     fig, axes = plt.subplots(1, len(cat_pairs), figsize=(10 * len(cat_pairs), 8))
 
     for ax, (cat_id, cat_label) in zip(axes, cat_pairs):
-        # ── Stacked MC components, e.g. TTbar and QCD pT bins ──
-        stack_hists = []
-        stack_labels = []
-        stack_colors = []
-        for sample_name in stack_sample_names:
-            style = sample_style[sample_name]
-            try:
-                hists, labels = get_sample_component_hists(
-                    sample_name, var, anacat_id=cat_id
-                )
-            except Exception:
-                continue
-            if len(labels) == 1:
-                labels = [style["label"]]
-            stack_hists.extend(hists)
-            stack_labels.extend(labels)
-            stack_colors.extend(component_colors(sample_name, len(hists)))
+        h_data = get_data_hist(var, cat_id)
+        h_ttbar = get_hist(ttbar_output, var, cat_id)
+        qcd_hists, qcd_scale, qcd_target = scaled_qcd_hists(var, cat_id, h_data, h_ttbar)
 
-        if stack_hists:
-            h_stack_total = sum_hists(stack_hists)
-            hep.histplot(
-                stack_hists,
-                ax=ax,
-                histtype="fill",
-                stack=True,
-                color=stack_colors,
-                edgecolor="black",
-                linewidth=0.4,
-                label=stack_labels,
-                density=plot_density,
-                alpha=0.85,
-                zorder=1,
-            )
-            draw_uncertainty_band(
-                ax,
-                h_stack_total,
-                label="MC unc.",
-                density=plot_density,
-                zorder=2,
-            )
+        stack_hists = qcd_hists + [h_ttbar]
+        stack_labels = [label for label, _ in qcd_components] + [r"$t\bar{t}$"]
+        stack_colors = qcd_colors(len(qcd_hists)) + [CMS_COLORS[0]]
+        h_stack_total = sum_hists(stack_hists)
 
-        # ── Non-stacked MC overlays, e.g. signal ──
-        for sample_name in overlay_sample_names:
-            style = sample_style[sample_name]
-            try:
-                h = get_sample_hist(sample_name, var, anacat_id=cat_id)
-            except Exception:
-                continue
-            hep.histplot(
-                h,
-                ax=ax,
-                histtype="step",
-                color=style["color"],
-                label=style["label"],
-                density=plot_density,
-                linewidth=2.0,
-                zorder=3,
-            )
-
-        # ── Data (sum of all eras) ──
-        try:
-            h_data = get_data_hist(var, anacat_id=cat_id)
-            hep.histplot(
-                h_data,
-                ax=ax,
-                histtype="errorbar",
-                color="black",
-                label="Data",
-                density=plot_density,
-                zorder=4,
-            )
-        except Exception:
-            pass
+        hep.histplot(
+            stack_hists,
+            ax=ax,
+            histtype="fill",
+            stack=True,
+            color=stack_colors,
+            edgecolor="black",
+            linewidth=0.4,
+            label=stack_labels,
+            density=plot_density,
+            alpha=0.85,
+            zorder=1,
+        )
+        draw_uncertainty_band(
+            ax,
+            h_stack_total,
+            label="MC unc.",
+            density=plot_density,
+            zorder=2,
+        )
+        hep.histplot(
+            h_data,
+            ax=ax,
+            histtype="errorbar",
+            color="black",
+            label="Data",
+            density=plot_density,
+            zorder=4,
+        )
 
         hplot.quick_label(xlabel=xlabel, data=True, ax=ax)
         ax.text(
             0.97,
             0.97,
-            cat_label,
+            f"{cat_label}\nQCD scale = {qcd_scale:.3g}\nQCD target = {qcd_target:.1f}",
             transform=ax.transAxes,
             ha="right",
             va="top",
-            fontsize=20,
+            fontsize=16,
         )
         ax.set_ylabel("A.U." if plot_density else "# Events")
         ax.set_xlabel(xlabel, labelpad=20)
@@ -361,7 +287,7 @@ for var, xlabel in plot_specs:
     plt.show()
 ```
 
-## Gen-level distributions (TTbar and ZPrime only)
+## Gen-level distributions (TTbar only)
 
 ```python
 gen_specs = [
@@ -371,21 +297,22 @@ gen_specs = [
     ("jet1_gen_dr", r"Subleading jet $\Delta R$ (gen)"),
 ]
 
-gen_samples = {k: v for k, v in samples.items() if k != "QCD"}
-
 for var, xlabel in gen_specs:
+    if var not in ttbar_output:
+        continue
+
     fig, axes = plt.subplots(1, len(cat_pairs), figsize=(10 * len(cat_pairs), 8))
 
     for ax, (cat_id, cat_label) in zip(axes, cat_pairs):
-        for sample_name in gen_samples:
-            style = sample_style[sample_name]
-            try:
-                h = get_sample_hist(sample_name, var, anacat_id=cat_id)
-            except Exception:
-                continue
-            hep.histplot(
-                h, ax=ax, histtype="step", color=style["color"], label=style["label"]
-            )
+        h = get_hist(ttbar_output, var, cat_id)
+
+        hep.histplot(
+            h,
+            ax=ax,
+            histtype="step",
+            color=CMS_COLORS[0],
+            label=r"$t\bar{t}$",
+        )
 
         hplot.quick_label(xlabel=xlabel, data=False, ax=ax)
         ax.text(
@@ -408,12 +335,14 @@ for var, xlabel in gen_specs:
 ## Cutflow
 
 ```python
-for sample_name, output in samples.items():
-    print(f"── {sample_name} ──")
-    for component_label, component_output in output.items():
-        print(f"  {component_label}")
-        print(component_output["cutflow"])
-        print()
+print("── TTbar ──")
+print(ttbar_output["cutflow"])
+print()
+
+print("── QCD ──")
+for label, output in qcd_components:
+    print(f"  {label}")
+    print(output["cutflow"])
     print()
 ```
 
