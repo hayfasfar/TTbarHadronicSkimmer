@@ -54,4 +54,5 @@ coffea_env/
 .last_config.json
 .codex
 CODEX.md
+.claude/
 .paired/
