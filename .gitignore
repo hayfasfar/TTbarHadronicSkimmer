@@ -56,3 +56,4 @@ coffea_env/
 CODEX.md
 .claude/
 .paired/
+node_modules/
