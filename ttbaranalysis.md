@@ -70,8 +70,6 @@ CONFIG_FILE = ".last_config.json"
 
 for _old_widget in list(globals().get("WIDGETS", {}).values()) + [
     globals().get("btn_reset"),
-    globals().get("_TTBAR_CONFIG_UI"),
-    globals().get("_TTBAR_CONFIG_STATUS"),
 ]:
     if _old_widget is not None:
         try:
@@ -388,44 +386,34 @@ btn_reset = widgets.Button(
 btn_reset.on_click(reset_to_defaults)
 
 # ── Display ───────────────────────────────────────────────────────────────────
-hdr = lambda t: widgets.HTML(f'<b style="font-size:0.9em">{t}</b>')
-
-col1 = widgets.VBox(
-    [hdr("Datasets"), w_dataset, w_signals, hdr("IOV"), w_iov],
-    layout=widgets.Layout(margin="0 8px 0 0"),
-)
-col2 = widgets.VBox(
-    [hdr("Subsections"), w_subsample, w_mass],
-    layout=widgets.Layout(margin="0 8px 0 0"),
-)
-col3 = widgets.VBox(
-    [
-        hdr("Analysis Options"),
-        w_blind,
-        w_bkgest,
-        w_toptagger,
-        w_redirector,
-        w_ttagWP,
-        w_btagger,
-        w_ht,
-        w_noSyst,
-        w_ntuple,
-        w_overwrite,
-    ],
-    layout=widgets.Layout(margin="0 8px 0 0"),
-)
-col4 = widgets.VBox([hdr("Run Options"), w_dask, w_env, w_test, w_nocluster, btn_reset])
-
-_TTBAR_CONFIG_UI = widgets.HBox([col1, col2, col3, col4])
-display(_TTBAR_CONFIG_UI)
 _loaded = (
     "restored from last session" if os.path.exists(CONFIG_FILE) else "using defaults"
 )
-_TTBAR_CONFIG_STATUS = widgets.HTML(
-    f'<i style="font-size:0.82em; color:gray">Config {_loaded} · auto-saved to '
-    f"<code>.last_config.json</code> on each change.</i>"
-)
-display(_TTBAR_CONFIG_STATUS)
+print(f"Config {_loaded}; changes save to {CONFIG_FILE}.")
+print("Datasets")
+display(w_dataset)
+display(w_signals)
+display(w_iov)
+print("Subsections")
+display(w_subsample)
+display(w_mass)
+print("Analysis options")
+for _widget in (
+    w_blind,
+    w_bkgest,
+    w_toptagger,
+    w_redirector,
+    w_ttagWP,
+    w_btagger,
+    w_ht,
+    w_noSyst,
+    w_ntuple,
+    w_overwrite,
+):
+    display(_widget)
+print("Run options")
+for _widget in (w_dask, w_env, w_test, w_nocluster, btn_reset):
+    display(_widget)
 print("Adjust widgets above, then run the next cell to apply settings.")
 ```
 
