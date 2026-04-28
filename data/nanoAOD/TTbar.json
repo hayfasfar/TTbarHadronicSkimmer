@@ -955,7 +955,7 @@
                 "subsample": "inclusive",
                 "year": "2024",
                 "is_mc": true,
-                "xsec_pb": 762.1
+                "xsec_pb": 350.6
             }
         }
     }
