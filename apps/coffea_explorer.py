@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 import pickle
 import os
 from pathlib import Path
@@ -28,6 +29,8 @@ SUPPORTED_SUFFIXES = {".coffea", ".pkl", ".pickle"}
 class LoadedFile:
     label: str
     path: Path
+    size: int
+    mtime_ns: int
     output: Any
 
 
@@ -60,6 +63,7 @@ def main() -> None:
         loaded_files,
         format_func=lambda item: item.label,
     )
+    st.sidebar.caption(file_identity(active_file))
     st.success("Loaded: " + ", ".join(item.label for item in loaded_files))
 
     tabs = st.tabs(["Summary", "Histograms", "Presets", "Ntuple", "Raw"])
@@ -139,14 +143,23 @@ def file_pickers() -> list[Path]:
 def load_selected_files(paths: list[Path]) -> list[LoadedFile]:
     loaded_files = []
     for idx, path in enumerate(paths, start=1):
+        stat = path.stat()
         try:
-            output = load_output(path)
+            output = load_output(path, stat.st_size, stat.st_mtime_ns)
         except Exception as exc:
             st.error(f"Could not load `{path}`")
             st.exception(exc)
             continue
         rel = path.relative_to(REPO_ROOT) if path.is_relative_to(REPO_ROOT) else path
-        loaded_files.append(LoadedFile(label=f"{idx}: {rel}", path=path, output=output))
+        loaded_files.append(
+            LoadedFile(
+                label=f"{idx}: {rel}",
+                path=path,
+                size=stat.st_size,
+                mtime_ns=stat.st_mtime_ns,
+                output=output,
+            )
+        )
     return loaded_files
 
 
@@ -159,8 +172,14 @@ def discover_files(root: Path) -> list[Path]:
     return sorted(paths)
 
 
+def file_identity(item: LoadedFile) -> str:
+    mtime = datetime.fromtimestamp(item.mtime_ns / 1_000_000_000).isoformat(timespec="seconds")
+    return f"`{item.path.resolve()}`\n\n{item.size:,} bytes, modified {mtime}"
+
+
 @st.cache_data(show_spinner="Loading file...")
-def load_output(path: Path) -> Any:
+def load_output(path: Path, size: int, mtime_ns: int) -> Any:
+    del size, mtime_ns
     if path.suffix == ".coffea":
         return util.load(path)
     with path.open("rb") as handle:
