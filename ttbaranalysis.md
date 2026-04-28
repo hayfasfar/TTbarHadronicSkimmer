@@ -63,10 +63,22 @@ from python.functions import printTime, makeSaveDirectories
 ```python
 # ── Widgets for interactive configuration ─────────────────────────────────────
 import ipywidgets as widgets
-from IPython.display import display
+from IPython.display import clear_output, display
 import json, os
 
 CONFIG_FILE = ".last_config.json"
+
+for _old_widget in list(globals().get("WIDGETS", {}).values()) + [
+    globals().get("btn_reset"),
+    globals().get("_TTBAR_CONFIG_UI"),
+    globals().get("_TTBAR_CONFIG_STATUS"),
+]:
+    if _old_widget is not None:
+        try:
+            _old_widget.close()
+        except Exception:
+            pass
+clear_output(wait=True)
 
 DEFAULTS = dict(
     dataset=["ZPrimeLocal"],
@@ -404,16 +416,16 @@ col3 = widgets.VBox(
 )
 col4 = widgets.VBox([hdr("Run Options"), w_dask, w_env, w_test, w_nocluster, btn_reset])
 
-display(widgets.HBox([col1, col2, col3, col4]))
+_TTBAR_CONFIG_UI = widgets.HBox([col1, col2, col3, col4])
+display(_TTBAR_CONFIG_UI)
 _loaded = (
     "restored from last session" if os.path.exists(CONFIG_FILE) else "using defaults"
 )
-display(
-    widgets.HTML(
-        f'<i style="font-size:0.82em; color:gray">Config {_loaded} · auto-saved to '
-        f"<code>.last_config.json</code> on each change.</i>"
-    )
+_TTBAR_CONFIG_STATUS = widgets.HTML(
+    f'<i style="font-size:0.82em; color:gray">Config {_loaded} · auto-saved to '
+    f"<code>.last_config.json</code> on each change.</i>"
 )
+display(_TTBAR_CONFIG_STATUS)
 print("Adjust widgets above, then run the next cell to apply settings.")
 ```
 
