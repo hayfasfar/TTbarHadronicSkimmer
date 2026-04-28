@@ -245,9 +245,10 @@ def render_histograms(loaded_files: list[LoadedFile]) -> None:
     with st.expander("Axes", expanded=False):
         st.dataframe(axis_frame(hist_obj), use_container_width=True, hide_index=True)
 
-    traces = trace_controls(histograms_by_file, source_options, primary_source, hist_key)
-    selections = axis_selections(hist_obj, plot_axes)
-    ranges = axis_ranges(hist_obj)
+    state_key = widget_key(primary_source, hist_key, ",".join(plot_axes))
+    traces = trace_controls(histograms_by_file, source_options, primary_source, hist_key, plot_axes, state_key)
+    selections = axis_selections(hist_obj, plot_axes, state_key)
+    ranges = axis_ranges(hist_obj, state_key)
     opt_cols = st.columns([1, 1, 2.6])
     with opt_cols[0]:
         density = st.checkbox("Density", value=False)
@@ -255,6 +256,10 @@ def render_histograms(loaded_files: list[LoadedFile]) -> None:
         log_scale = st.checkbox("Log", value=False)
     with opt_cols[2]:
         plot_width = st.slider("Width", min_value=420, max_value=1000, value=720, step=20)
+
+    if not traces:
+        st.warning("No compatible traces selected for these plot axes.")
+        return
 
     try:
         plotted_traces = [
@@ -445,11 +450,13 @@ def trace_controls(
     source_options: list[str],
     primary_source: str,
     primary_hist_key: str,
+    plot_axes: list[str],
+    state_key: str,
 ) -> list[tuple[str, Hist]]:
     traces: list[tuple[str, Hist]] = []
 
     with st.expander("Traces", expanded=False):
-        n_traces = st.slider("Count", min_value=1, max_value=3, value=1)
+        n_traces = st.slider("Count", min_value=1, max_value=3, value=1, key=f"trace-count-{state_key}")
 
         for idx in range(n_traces):
             col_source, col_hist, col_label = st.columns([1.1, 1.1, 1.2])
@@ -458,17 +465,23 @@ def trace_controls(
                     f"Trace {idx + 1} source",
                     source_options,
                     index=source_options.index(primary_source) if primary_source in source_options else 0,
-                    key=f"trace-source-{idx}",
+                    key=f"trace-source-{idx}-{state_key}",
                 )
 
-            hist_keys = list(histograms_by_file[source])
+            hist_keys = [
+                key for key, hist_obj in histograms_by_file[source].items()
+                if all(axis in named_axes(hist_obj) for axis in plot_axes)
+            ]
+            if not hist_keys:
+                st.warning(f"No trace histograms in `{source}` have axes: {', '.join(plot_axes)}")
+                continue
             default_hist_index = hist_keys.index(primary_hist_key) if primary_hist_key in hist_keys else 0
             with col_hist:
                 hist_key = st.selectbox(
                     f"Trace {idx + 1} histogram",
                     hist_keys,
                     index=default_hist_index,
-                    key=f"trace-hist-{idx}",
+                    key=f"trace-hist-{idx}-{state_key}-{source}",
                 )
 
             default_label = hist_key if n_traces > 1 else primary_hist_key
@@ -478,7 +491,7 @@ def trace_controls(
                 label = st.text_input(
                     f"Trace {idx + 1} label",
                     value=default_label,
-                    key=f"trace-label-{idx}",
+                    key=f"trace-label-{idx}-{state_key}-{source}-{hist_key}",
                 )
 
             traces.append((label, histograms_by_file[source][hist_key]))
@@ -614,7 +627,7 @@ def default_numeric_axes(hist_obj: Hist) -> list[str]:
     return numeric or named_axes(hist_obj)[:1]
 
 
-def axis_selections(hist_obj: Hist, plot_axes: list[str]) -> dict[str, Any]:
+def axis_selections(hist_obj: Hist, plot_axes: list[str], state_key: str = "") -> dict[str, Any]:
     selections: dict[str, Any] = {}
     discrete_axes = [
         (idx, axis)
@@ -633,7 +646,7 @@ def axis_selections(hist_obj: Hist, plot_axes: list[str]) -> dict[str, Any]:
                 continue
 
             default = ["nominal"] if "nominal" in values else values[:1]
-            chosen = st.multiselect(f"{name}", values, default=default)
+            chosen = st.multiselect(f"{name}", values, default=default, key=f"select-{name}-{state_key}")
             if not chosen:
                 st.warning(f"No values selected for `{name}`; using all values.")
                 continue
@@ -641,7 +654,7 @@ def axis_selections(hist_obj: Hist, plot_axes: list[str]) -> dict[str, Any]:
     return selections
 
 
-def axis_ranges(hist_obj: Hist) -> dict[str, tuple[float, float]]:
+def axis_ranges(hist_obj: Hist, state_key: str = "") -> dict[str, tuple[float, float]]:
     ranges: dict[str, tuple[float, float]] = {}
     numeric_axes = [
         (idx, axis)
@@ -658,7 +671,7 @@ def axis_ranges(hist_obj: Hist) -> dict[str, tuple[float, float]]:
             edges = axis.edges
             low_default = float(edges[0])
             high_default = float(edges[-1])
-            enabled = st.checkbox(f"Restrict `{name}`", value=False, key=f"range-enable-{name}")
+            enabled = st.checkbox(f"Restrict `{name}`", value=False, key=f"range-enable-{name}-{state_key}")
             if not enabled:
                 continue
 
@@ -669,7 +682,7 @@ def axis_ranges(hist_obj: Hist) -> dict[str, tuple[float, float]]:
                     value=low_default,
                     min_value=low_default,
                     max_value=high_default,
-                    key=f"range-low-{name}",
+                    key=f"range-low-{name}-{state_key}",
                 )
             with col_high:
                 high = st.number_input(
@@ -677,7 +690,7 @@ def axis_ranges(hist_obj: Hist) -> dict[str, tuple[float, float]]:
                     value=high_default,
                     min_value=low_default,
                     max_value=high_default,
-                    key=f"range-high-{name}",
+                    key=f"range-high-{name}-{state_key}",
                 )
 
             if low >= high:
@@ -727,7 +740,10 @@ def project_hist(
     ordered_axes = []
     ordered_edges = []
     for plot_axis in plot_axes:
-        info = next(item for item in axis_info if item["name"] == plot_axis)
+        info = next((item for item in axis_info if item["name"] == plot_axis), None)
+        if info is None:
+            available = ", ".join(item["name"] for item in axis_info)
+            raise ValueError(f"Histogram does not have plot axis `{plot_axis}` after slicing. Available axes: {available}")
         axis = info["axis"]
         if is_discrete_axis(axis):
             raise ValueError(f"Plot axis `{plot_axis}` is categorical; choose numeric plot axes for now.")
@@ -739,6 +755,11 @@ def project_hist(
     if transpose_order != list(range(len(transpose_order))):
         values = np.transpose(values, transpose_order)
     return Projection(axes=ordered_axes, values=values, edges=ordered_edges)
+
+
+def widget_key(*parts: Any) -> str:
+    text = "::".join(str(part) for part in parts)
+    return "".join(ch if ch.isalnum() else "_" for ch in text)[-120:]
 
 
 def edges_for_axis(axis: Any, indices: np.ndarray | None) -> np.ndarray:
