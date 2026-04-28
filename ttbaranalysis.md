@@ -514,6 +514,17 @@ def _print_runner_block(lines, rule_char="-", width=66):
     print(rule_char * width)
 
 
+def _archive_existing_output(path, tag="old"):
+    if not os.path.exists(path):
+        return None
+
+    root, ext = os.path.splitext(path)
+    archive_path = f"{root}_{tag}{ext}"
+
+    os.replace(path, archive_path)
+    return archive_path
+
+
 def _close_dask_resources(client, cluster):
     if client is not None:
         client.close()
@@ -586,7 +597,7 @@ def run_analysis(args):
     useDeepAK8 = args.toptagger == "deepak8"
     useDeepCSV = args.btagger == "deepcsv"
     htCut = 1400.0 if args.ht == "1400" else 950.0
-    dask_memory = "6GB"
+    dask_memory = "5GB"
     chunksize_dask = 100000
     chunksize_futures = 200000
     maxchunks = 10 if args.test else None
@@ -799,6 +810,14 @@ def run_analysis(args):
                             f"warning: could not load skipped output {savefilename}: {load_error}"
                         )
                     continue
+                elif os.path.exists(savefilename) and args.overwrite:
+                    archived_output = _archive_existing_output(savefilename)
+                    _print_runner_block(
+                        [
+                            f"archived existing output: {archived_output}",
+                            f"new output will use: {savefilename}",
+                        ]
+                    )
 
                 try:
                     if not args.dask:
