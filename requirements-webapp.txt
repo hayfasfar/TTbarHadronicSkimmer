@@ -1,0 +1,7 @@
+streamlit
+coffea
+hist
+mplhep
+matplotlib
+numpy
+pandas
