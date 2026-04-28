@@ -457,6 +457,8 @@ def trace_controls(
 
     with st.expander("Traces", expanded=False):
         n_traces = st.slider("Count", min_value=1, max_value=3, value=1, key=f"trace-count-{state_key}")
+        if len(source_options) == 1:
+            st.caption("Only one source is loaded. Increase **File slots** in the sidebar to compare against another file.")
 
         for idx in range(n_traces):
             col_source, col_hist, col_label = st.columns([1.1, 1.1, 1.2])
