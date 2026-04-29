@@ -204,6 +204,7 @@ normalization is set from data:
 plot_specs = [
     ("ttbarmass", r"$m_{t\bar{t}}$ [GeV]"),
     ("jetmsd", r"Leading jet $m_{SD}$ [GeV]"),
+    ("chi", r"$\chi_{\mathrm{dijet}} = e^{|\Delta y|}$"),
     # ("jetmsd1", r"Subleading jet $m_{SD}$ [GeV]"),
     # ("jet0_pt", r"Leading jet $p_T$ [GeV]"),
     # ("jet0_eta", r"Leading jet $\eta$"),
