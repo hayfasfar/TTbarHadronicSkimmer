@@ -68,15 +68,29 @@ def _load_components(paths):
     return [(_qcd_pt_label(path), load(path)) for path in paths]
 
 
+def _signal_label(path):
+    match = re.search(r"ZPrime(\d+)_1_(\d{4})", path.name)
+    if match is None:
+        return path.stem
+    return rf"$Z'_{{{match.group(1)}}}$, g=1"
+
+
+def _load_optional_signals(pattern):
+    paths = sorted(coffea_dir.glob(pattern))
+    return [(_signal_label(path), load(path)) for path in paths]
+
+
 ttbar_output = load(coffea_dir / "TTbar_2024_inclusive_noSyst.coffea")
 qcd_paths = list(coffea_dir.glob("QCD_2024_*_PT-*to*_noSyst.coffea"))
 qcd_components = _load_components(qcd_paths)
 data_outputs = [load(f"./outputs/dy/data_{era}_noSyst.coffea") for era in data_eras]
+signal_components = _load_optional_signals("ZPrime*_1_2024*_noSyst*.coffea")
 
 print("Loaded:")
 print("  TTbar")
 print("  QCD:", ", ".join(label for label, _ in qcd_components))
 print("  Data:", ", ".join(data_eras))
+print("  Signals:", ", ".join(label for label, _ in signal_components) or "none")
 ```
 
 ```python
@@ -249,6 +263,11 @@ for var, xlabel in plot_specs:
 
         if shape_compare:
             h_data = get_data_hist(var, cat_id) if include_data else None
+            h_signals = [
+                (label, get_hist(output, var, cat_id))
+                for label, output in signal_components
+                if var in output
+            ]
 
             hep.histplot(
                 normalize_hist(h_qcd_total),
@@ -266,6 +285,16 @@ for var, xlabel in plot_specs:
                 linewidth=2.4,
                 label=r"$t\bar{t}$",
             )
+            for i, (label, h_signal) in enumerate(h_signals):
+                hep.histplot(
+                    normalize_hist(h_signal),
+                    ax=ax,
+                    histtype="step",
+                    color=CMS_COLORS[(i + 2) % len(CMS_COLORS)],
+                    linestyle="--",
+                    linewidth=2.4,
+                    label=label,
+                )
             if include_data:
                 hep.histplot(
                     normalize_hist(h_data),
@@ -373,6 +402,11 @@ for var, xlabel in plot_specs:
         if include_data
         else None
     )
+    h_signals = [
+        (label, get_hist_sumcats(output, var, fail_cat_ids))
+        for label, output in signal_components
+        if var in output
+    ]
 
     hep.histplot(
         normalize_hist(h_qcd_total),
@@ -390,6 +424,16 @@ for var, xlabel in plot_specs:
         linewidth=2.4,
         label=r"$t\bar{t}$",
     )
+    for i, (label, h_signal) in enumerate(h_signals):
+        hep.histplot(
+            normalize_hist(h_signal),
+            ax=ax,
+            histtype="step",
+            color=CMS_COLORS[(i + 2) % len(CMS_COLORS)],
+            linestyle="--",
+            linewidth=2.4,
+            label=label,
+        )
     if include_data:
         hep.histplot(
             normalize_hist(h_data),
