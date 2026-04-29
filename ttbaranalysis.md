@@ -453,6 +453,7 @@ print("----------------")
 ```python
 import subprocess
 import traceback
+from write_ntuple import merge_root_ntuples
 
 
 def _build_sample_metadata(sample, subsection, iov, metadata):
@@ -523,6 +524,29 @@ def _archive_existing_output(path, tag="old"):
 
     os.replace(path, archive_path)
     return archive_path
+
+
+def _ntuple_paths_for_coffea(coffea_file, run_id):
+    ntuple_dir = os.path.join(os.path.dirname(coffea_file), "ntuples")
+    root_file = os.path.join(
+        ntuple_dir, os.path.basename(coffea_file).replace(".coffea", "_ntuple.root")
+    )
+    chunk_dir = os.path.join(
+        ntuple_dir,
+        "chunks",
+        os.path.basename(coffea_file).replace(".coffea", f"_{run_id}"),
+    )
+    return root_file, os.path.abspath(chunk_dir)
+
+
+def _merge_ntuple_chunks(coffea_file, tree_name):
+    output = util.load(coffea_file)
+    chunk_files = sorted(set(output.get("ntuple_chunks", [])))
+    root_file, _ = _ntuple_paths_for_coffea(coffea_file, "merged")
+    os.makedirs(os.path.dirname(root_file), exist_ok=True)
+    scale = float(output.get("normalization", {}).get("scale_factor", 1.0))
+    merge_root_ntuples(chunk_files, root_file, tree_name=tree_name, weight_scale=scale)
+    return root_file, len(chunk_files)
 
 
 def _close_dask_resources(client, cluster):
@@ -785,6 +809,9 @@ def run_analysis(args):
                 if args.test:
                     savefilename = savefilename.replace(".coffea", "_test.coffea")
 
+                ntuple_run_id = f"{int(time.time())}_{sample_index}_{section_index}"
+                _, ntuple_chunk_dir = _ntuple_paths_for_coffea(savefilename, ntuple_run_id)
+
                 section_label = _format_section_label(IOV, sample, subsection)
                 if section_index + 1 < len(sections):
                     next_label = _format_section_label(
@@ -847,6 +874,9 @@ def run_analysis(args):
                                 blinding=args.blind,
                                 debug=True,
                                 produce_ntuple=args.ntuple,
+                                ntuple_mode="chunks" if args.ntuple else "accumulator",
+                                ntuple_output_dir=ntuple_chunk_dir if args.ntuple else None,
+                                ntuple_tree_name=sample,
                                 sample_metadata=sample_metadata,
                             ),
                         )
@@ -876,6 +906,9 @@ def run_analysis(args):
                                 systematics=systematics,
                                 blinding=args.blind,
                                 produce_ntuple=args.ntuple,
+                                ntuple_mode="chunks" if args.ntuple else "accumulator",
+                                ntuple_output_dir=ntuple_chunk_dir if args.ntuple else None,
+                                ntuple_tree_name=sample,
                                 sample_metadata=sample_metadata,
                             ),
                         )
@@ -883,6 +916,12 @@ def run_analysis(args):
                     output["analysisCategories"] = label_map
                     util.save(output, savefilename)
                     print("saving", savefilename)
+                    if args.ntuple:
+                        merged_root_file, n_chunks = _merge_ntuple_chunks(savefilename, sample)
+                        print(
+                            f"merged {n_chunks} ntuple chunks: "
+                            f"{merged_root_file}"
+                        )
                     savefilenames.append((savefilename, sample))
                 except Exception as exc:
                     failures.append(
@@ -951,22 +990,6 @@ args = build_args()
 # ---- Run the process ---- #
 
 run_summary = run_analysis(args)
-```
-
-```python
-import subprocess, os
-
-if args.ntuple:
-    for coffea_file, sample in run_summary["savefilenames"]:
-        ntuple_dir = os.path.join(os.path.dirname(coffea_file), "ntuples")
-        os.makedirs(ntuple_dir, exist_ok=True)
-        root_file = os.path.join(
-            ntuple_dir, os.path.basename(coffea_file).replace(".coffea", "_ntuple.root")
-        )
-        print(f"writing ntuple: {coffea_file} -> {root_file}")
-        subprocess.run(
-            ["python", "write_ntuple.py", coffea_file, root_file, sample], check=True
-        )
 ```
 
 ```python

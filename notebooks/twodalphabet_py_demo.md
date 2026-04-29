@@ -28,29 +28,34 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
-plt.style.use("dark_background")
-plt.rcParams.update({
-    "figure.facecolor": "#111111",
-    "axes.facecolor": "#111111",
-    "savefig.facecolor": "#111111",
-    "axes.edgecolor": "#d1d5db",
-    "axes.labelcolor": "#e5e7eb",
-    "xtick.color": "#e5e7eb",
-    "ytick.color": "#e5e7eb",
-    "text.color": "#f9fafb",
-    "grid.color": "#374151",
-    "legend.facecolor": "#1f2937",
-    "legend.edgecolor": "#4b5563",
-})
+# plt.style.use("dark_background")
+# plt.rcParams.update({
+#     "figure.facecolor": "#111111",
+#     "axes.facecolor": "#111111",
+#     "savefig.facecolor": "#111111",
+#     "axes.edgecolor": "#d1d5db",
+#     "axes.labelcolor": "#e5e7eb",
+#     "xtick.color": "#e5e7eb",
+#     "ytick.color": "#e5e7eb",
+#     "text.color": "#f9fafb",
+#     "grid.color": "#374151",
+#     "legend.facecolor": "#1f2937",
+#     "legend.edgecolor": "#4b5563",
+# })
 
 repo = Path.cwd()
 if repo.name == "notebooks":
     repo = repo.parent
 sys.path.insert(0, str(repo / "python"))
+sys.path.insert(0, str(repo / "plots"))
 
 import twodalphabet_py
 twodalphabet_py = importlib.reload(twodalphabet_py)
 from twodalphabet_py import Hist2D, PassFailModelInput, FormulaTransferFunction, PassFail2DFitter
+
+import hep_plot
+hep_plot = importlib.reload(hep_plot)
+hep_plot.setup(era="2024", outdir=repo / "outputs" / "plots" / "twodalphabet_py", formats=("pdf",))
 
 year = "2024"
 with open(repo / "outputs" / "2dalphabet_inputs" / f"hists_{year}.pkl", "rb") as f:
@@ -205,7 +210,7 @@ plt.show()
 ```python
 mtt_centers = 0.5 * (y_edges[:-1] + y_edges[1:])
 
-fig, (ax_fail, ax_pass) = plt.subplots(1, 2, figsize=(11, 4), constrained_layout=True)
+fig, (ax_fail, ax_pass) = plt.subplots(1, 2, figsize=(22, 8), constrained_layout=True)
 for ax, data_2d, qcd_2d, title in [
     (ax_fail, inputs.data_fail.values, fit.qcd_fail, "Fail"),
     (ax_pass, inputs.data_pass.values, fit.qcd_pass, "Pass"),
@@ -299,42 +304,139 @@ for mtt, data, exp, qcd, ttbar in zip(
 ```
 
 ```python
-fig, axes = plt.subplots(2, 2, figsize=(12, 8), constrained_layout=True)
+qcd_d = proj["qcd_D"]
+ttbar_d = proj["ttbar_D"]
+total_d = qcd_d + ttbar_d
+data_d_proj = proj["data_D"]
+data_d_err = np.sqrt(np.maximum(data_d_proj, 1.0))
 
-ax = axes[0, 0]
-ax.step(mtt_centers, proj["data_D"], where="mid", label="data D")
-ax.step(mtt_centers, proj["exp_D"], where="mid", label="expected D")
-ax.step(mtt_centers, proj["qcd_D"], where="mid", linestyle="--", label="QCD D")
-ax.step(mtt_centers, proj["ttbar_D"], where="mid", linestyle="--", label="ttbar D")
-ax.set_title("Pass signal window D")
-ax.set_xlabel("m_tt [GeV]")
-ax.set_ylabel("Events / bin")
-ax.legend()
-
-ax = axes[0, 1]
-ratio = np.divide(
-    proj["data_D"],
-    proj["exp_D"],
-    out=np.full_like(proj["data_D"], np.nan),
-    where=proj["exp_D"] > 0,
+ratio_d = np.divide(
+    data_d_proj,
+    total_d,
+    out=np.full_like(data_d_proj, np.nan),
+    where=total_d > 0,
 )
-ax.axhline(1.0, color="black", linewidth=1)
-ax.step(mtt_centers, ratio, where="mid")
-ax.set_ylim(0, 2)
-ax.set_title("D data / expected")
-ax.set_xlabel("m_tt [GeV]")
+ratio_d_err = np.divide(
+    data_d_err,
+    total_d,
+    out=np.full_like(data_d_err, np.nan),
+    where=total_d > 0,
+)
+pull_d = np.divide(
+    data_d_proj - total_d,
+    np.sqrt(np.maximum(total_d, 1.0)),
+    out=np.full_like(data_d_proj, np.nan),
+    where=total_d > 0,
+)
 
-ax = axes[1, 0]
+fig, (ax_main, ax_ratio, ax_pull) = plt.subplots(
+    3,
+    1,
+    figsize=(14, 12),
+    sharex=True,
+    constrained_layout=True,
+    gridspec_kw={"height_ratios": [3.5, 1.1, 1.1]},
+)
+
+ax = ax_main
+ax.stairs(
+    qcd_d,
+    y_edges,
+    baseline=0,
+    fill=True,
+    color="#f89c20",
+    alpha=0.75,
+    label="QCD multijet (fit)",
+)
+ax.stairs(
+    total_d,
+    y_edges,
+    baseline=qcd_d,
+    fill=True,
+    color="#5790fc",
+    alpha=0.75,
+    label=r"SM $t\bar{t}$ (fixed MC)",
+)
+ax.stairs(
+    total_d,
+    y_edges,
+    color="black",
+    linewidth=1.4,
+    label=r"QCD (fitted) + SM $t\bar{t}$",
+)
+ax.errorbar(
+    mtt_centers,
+    data_d_proj,
+    yerr=data_d_err,
+    fmt="o",
+    color="black",
+    markersize=4,
+    linewidth=1,
+    capsize=0,
+    label="Data in blinded D window",
+)
+ax.set_xlim(800, 5000)
+hep_plot.quick_label(
+    ylabel="Events / bin",
+    #title="Pass signal window D",
+    cms_text="Preliminary",
+    data=True,
+    ax=ax,
+)
+ax.legend(loc="best", fontsize=14)
+
+ax = ax_ratio
+ax.axhline(1.0, color="black", linewidth=1)
+ax.errorbar(
+    mtt_centers,
+    ratio_d,
+    yerr=ratio_d_err,
+    fmt="o",
+    color="black",
+    markersize=4,
+    linewidth=1,
+    capsize=0,
+)
+ax.set_ylim(0, 2)
+ax.set_ylabel("Data / pred.")
+ax.grid(axis="y", alpha=0.25)
+
+ax = ax_pull
+ax.axhspan(-2, 2, color="royalblue", alpha=0.18, linewidth=0)
+ax.axhspan(-1, 1, color="royalblue", alpha=0.28, linewidth=0)
+ax.axhline(0.0, color="royalblue", linewidth=1.2, alpha=0.85)
+ax.bar(
+    mtt_centers,
+    pull_d,
+    width=np.diff(y_edges),
+    align="center",
+    color="royalblue",
+    alpha=0.85,
+    edgecolor="royalblue",
+    linewidth=0.4,
+)
+ax.set_ylim(-3, 3)
+ax.set_xlabel(r"$m_{t\bar{t}}$ [GeV]")
+ax.set_ylabel("Pull")
+ax.set_yticks([-2, -1, 0, 1, 2])
+ax.grid(axis="y", color="white", linewidth=1.0, alpha=0.65)
+plt.show()
+```
+
+```python
+fig, axes = plt.subplots(1, 2, figsize=(16, 6), constrained_layout=True, sharex=True)
+
+ax = axes[0]
 ax.step(mtt_centers, proj["data_BF"], where="mid", label="data B+F")
-ax.step(mtt_centers, proj["exp_BF"], where="mid", label="expected B+F")
+ax.step(mtt_centers, proj["exp_BF"], where="mid", label=r"QCD (fitted) + SM $t\bar{t}$ B+F")
 ax.set_title("Pass sidebands B+F")
 ax.set_xlabel("m_tt [GeV]")
 ax.set_ylabel("Events / bin")
 ax.legend()
 
-ax = axes[1, 1]
+ax = axes[1]
 ax.step(mtt_centers, proj["data_C"], where="mid", label="data fail C")
-ax.step(mtt_centers, proj["exp_C"], where="mid", label="expected fail C")
+ax.step(mtt_centers, proj["exp_C"], where="mid", label=r"QCD (fitted) + SM $t\bar{t}$ fail C")
 ax.set_title("Fail signal-mass band C")
 ax.set_xlabel("m_tt [GeV]")
 ax.set_ylabel("Events / bin")

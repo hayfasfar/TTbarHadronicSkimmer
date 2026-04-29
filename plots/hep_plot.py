@@ -35,7 +35,7 @@ CMS_LUMI_RUN2 = {
     "2017": 41.48,
     "2018": 59.83,
     "all" : 137.6,
-    "2024": 122.2
+    "2024": 112.7
 }
 
 
@@ -215,8 +215,7 @@ def quick_label(
     if title is not None:
         ax.set_title(title)
     
-    ax.ticklabel_format(style="sci", scilimits=(-3, 3), useMathText=True)
-    ax.get_yaxis().get_offset_text().set_position((-0.085, 1.05))
+    ax.ticklabel_format(style="plain", useOffset=False)
     # If lumi not given, determine from ERA
     if lumi is None:
         era_key = str(ERA).replace("UL", "")  # allow UL2018, etc.

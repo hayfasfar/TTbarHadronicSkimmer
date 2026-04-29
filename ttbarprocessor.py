@@ -12,6 +12,7 @@ from coffea.jetmet_tools import JECStack, CorrectedJetsFactory
 from coffea.lookup_tools import extractor
 from coffea.analysis_tools import PackedSelection
 from collections import defaultdict
+import hashlib
 import sys
 import os, psutil
 import copy
@@ -161,6 +162,9 @@ class TTbarResProcessor(processor.ProcessorABC):
         anacats=['2t0bcen'],
         debug=False,
         produce_ntuple=False,
+        ntuple_mode='accumulator',
+        ntuple_output_dir=None,
+        ntuple_tree_name='ttbar',
         sample_metadata=None,
     ):
         self.iov = iov
@@ -180,6 +184,11 @@ class TTbarResProcessor(processor.ProcessorABC):
         self.blinding = blinding
         self.debug = debug
         self.produce_ntuple = produce_ntuple
+        self.ntuple_mode = ntuple_mode
+        self.ntuple_output_dir = ntuple_output_dir
+        self.ntuple_tree_name = ntuple_tree_name
+        self.store_ntuple_accumulator = produce_ntuple and ntuple_mode == 'accumulator'
+        self.write_ntuple_chunks = produce_ntuple and ntuple_mode == 'chunks'
         self.sample_metadata = copy.deepcopy(sample_metadata or {})
 
         self.logger = Logger(mode='debug' if debug else 'info')
@@ -229,7 +238,8 @@ class TTbarResProcessor(processor.ProcessorABC):
             anacats=self.anacats,
             systematics=self.systematics,
             no_syst=self.noSyst,
-            produce_ntuple=self.produce_ntuple,
+            produce_ntuple=self.store_ntuple_accumulator,
+            produce_ntuple_chunks=self.write_ntuple_chunks,
         )
 
     def _tscore(self, jet):
@@ -278,34 +288,87 @@ class TTbarResProcessor(processor.ProcessorABC):
         ttbarmass, ht, rapidity, chi, jety, jety1, evtweights,
     ):
         """Accumulate flat ntuple columns for all selected events."""
+        branches = self._build_ntuple_branches(
+            events, labels_and_categories,
+            jetpt, jeteta, jetphi, jetmsd, tdisc_s0,
+            jetpt1, jeteta1, jetphi1, jetmsd1, tdisc_s1,
+            ttbarmass, ht, rapidity, chi, jety, jety1, evtweights,
+        )
+
+        for name, values in branches.items():
+            output["ntuple"][name] += processor.column_accumulator(values)
+
+    def _build_ntuple_branches(
+        self, events, labels_and_categories,
+        jetpt, jeteta, jetphi, jetmsd, tdisc_s0,
+        jetpt1, jeteta1, jetphi1, jetmsd1, tdisc_s1,
+        ttbarmass, ht, rapidity, chi, jety, jety1, evtweights,
+    ):
+        """Build flat ntuple arrays for the selected nominal chunk."""
         anacat_arr = np.full(len(events), -1, dtype=np.int64)
         for _i, (_lbl, _mask) in enumerate(labels_and_categories.items()):
             anacat_arr[ak.to_numpy(_mask)] = _i
 
         def _col(arr, dtype=np.float32):
-            return processor.column_accumulator(ak.to_numpy(arr).astype(dtype))
+            return ak.to_numpy(arr).astype(dtype)
 
-        output["ntuple"]["jet0_pt"]       += _col(jetpt)
-        output["ntuple"]["jet0_eta"]      += _col(jeteta)
-        output["ntuple"]["jet0_phi"]      += _col(jetphi)
-        output["ntuple"]["jet0_msd"]      += _col(jetmsd)
-        output["ntuple"]["jet0_tdisc"]    += _col(tdisc_s0)
-        output["ntuple"]["jet1_pt"]       += _col(jetpt1)
-        output["ntuple"]["jet1_eta"]      += _col(jeteta1)
-        output["ntuple"]["jet1_phi"]      += _col(jetphi1)
-        output["ntuple"]["jet1_msd"]      += _col(jetmsd1)
-        output["ntuple"]["jet1_tdisc"]    += _col(tdisc_s1)
-        output["ntuple"]["ttbarmass"]     += _col(ttbarmass)
-        output["ntuple"]["ht"]            += _col(ht)
-        output["ntuple"]["dy"]            += _col(rapidity)
-        output["ntuple"]["chi"]           += _col(chi)
-        output["ntuple"]["jet0_rapidity"] += _col(jety)
-        output["ntuple"]["jet1_rapidity"] += _col(jety1)
-        output["ntuple"]["weight"]        += _col(evtweights)
-        output["ntuple"]["anacat"]        += _col(anacat_arr, dtype=np.int64)
-        output["ntuple"]["run"]           += _col(events.run, dtype=np.int64)
-        output["ntuple"]["lumi"]          += _col(events.luminosityBlock, dtype=np.int64)
-        output["ntuple"]["event"]         += _col(events.event, dtype=np.int64)
+        return {
+            "jet0_pt":       _col(jetpt),
+            "jet0_eta":      _col(jeteta),
+            "jet0_phi":      _col(jetphi),
+            "jet0_msd":      _col(jetmsd),
+            "jet0_tdisc":    _col(tdisc_s0),
+            "jet1_pt":       _col(jetpt1),
+            "jet1_eta":      _col(jeteta1),
+            "jet1_phi":      _col(jetphi1),
+            "jet1_msd":      _col(jetmsd1),
+            "jet1_tdisc":    _col(tdisc_s1),
+            "ttbarmass":     _col(ttbarmass),
+            "ht":            _col(ht),
+            "dy":            _col(rapidity),
+            "chi":           _col(chi),
+            "jet0_rapidity": _col(jety),
+            "jet1_rapidity": _col(jety1),
+            "weight":        _col(evtweights),
+            "anacat":        _col(anacat_arr, dtype=np.int64),
+            "run":           _col(events.run, dtype=np.int64),
+            "lumi":          _col(events.luminosityBlock, dtype=np.int64),
+            "event":         _col(events.event, dtype=np.int64),
+        }
+
+    def _write_ntuple_chunk(self, events, labels_and_categories, *branch_args):
+        """Write this nominal chunk to a small ROOT file and return its path."""
+        if not self.ntuple_output_dir:
+            raise RuntimeError("ntuple_mode='chunks' requires ntuple_output_dir")
+
+        branches = self._build_ntuple_branches(events, labels_and_categories, *branch_args)
+        n_rows = len(next(iter(branches.values()))) if branches else 0
+        if n_rows == 0:
+            return None
+
+        import uproot
+
+        metadata = events.metadata
+        dataset = str(metadata.get('dataset', self.sample_metadata.get('sample', 'dataset')))
+        filename = str(metadata.get('filename', metadata.get('file', 'unknown_file')))
+        entrystart = metadata.get('entrystart', metadata.get('entry_start', 'start'))
+        entrystop = metadata.get('entrystop', metadata.get('entry_stop', 'stop'))
+        chunk_key = f"{dataset}|{filename}|{entrystart}|{entrystop}"
+        chunk_hash = hashlib.sha1(chunk_key.encode()).hexdigest()[:16]
+        safe_dataset = ''.join(c if c.isalnum() or c in '._-' else '_' for c in dataset)
+
+        os.makedirs(self.ntuple_output_dir, exist_ok=True)
+        chunk_path = os.path.join(
+            self.ntuple_output_dir,
+            f"{safe_dataset}_{chunk_hash}_{entrystart}_{entrystop}.root",
+        )
+        tmp_path = f"{chunk_path}.tmp.{os.getpid()}"
+
+        with uproot.recreate(tmp_path) as fout:
+            fout.mktree(self.ntuple_tree_name, {name: values.dtype for name, values in branches.items()})
+            fout[self.ntuple_tree_name].extend(branches)
+        os.replace(tmp_path, chunk_path)
+        return chunk_path
 
     def _fill_kinematic_hists(
         self, output, systematic, i, icat, weights,
@@ -751,13 +814,23 @@ class TTbarResProcessor(processor.ProcessorABC):
         )
 
         # --- flat ntuple output ---
-        if isNominal and self.produce_ntuple:
+        if isNominal and self.store_ntuple_accumulator:
             self._fill_ntuple(
                 output, correction, events, labels_and_categories,
                 jetpt, jeteta, jetphi, jetmsd, tdisc_s0,
                 jetpt1, jeteta1, jetphi1, jetmsd1, tdisc_s1,
                 ttbarmass, ht, rapidity, chi, jety, jety1, evtweights,
             )
+        elif isNominal and self.write_ntuple_chunks:
+            chunk_path = self._write_ntuple_chunk(
+                events,
+                labels_and_categories,
+                jetpt, jeteta, jetphi, jetmsd, tdisc_s0,
+                jetpt1, jeteta1, jetphi1, jetmsd1, tdisc_s1,
+                ttbarmass, ht, rapidity, chi, jety, jety1, evtweights,
+            )
+            if chunk_path:
+                output["ntuple_chunks"] += [chunk_path]
 
         # --- per-category histogram filling ---
         for i, (ilabel, icat) in enumerate(labels_and_categories.items()):
