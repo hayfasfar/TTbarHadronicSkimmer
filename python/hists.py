@@ -40,7 +40,7 @@ def build_output_histograms(
     ht_axis = hist.axis.Regular(40, 400, 4400, name="ht", label=r"$H_T$ [GeV]")
     manual_axis = hist.axis.Variable(manual_bins, name="jetp", label=r"Jet Momentum [GeV]")
     jetdy_axis = hist.axis.Regular(50, -3, 3, name="jetdy", label=r"$\Delta y$")
-    chi_axis   = hist.axis.Regular(190, 1, 20, name="chi",   label=r"$\chi_\mathrm{dijet}$")
+    chi_axis   = hist.axis.Regular(50, 1, 30, name="chi",   label=r"$\chi_\mathrm{dijet}$")
     jetpt_axis = hist.axis.Regular(50, 300, 2000, name="jetpt", label=r"Jet $p_T$ [GeV]")
     jeteta_axis = hist.axis.Regular(50, -3, 3, name="jeteta", label=r"Jet $\eta$")
     jetphi_axis = hist.axis.Regular(50, -3.14159, 3.14159, name="jetphi", label=r"Jet $\phi$")

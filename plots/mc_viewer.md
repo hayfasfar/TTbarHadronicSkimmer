@@ -6,7 +6,7 @@ jupyter:
       extension: .md
       format_name: markdown
       format_version: '1.3'
-      jupytext_version: 1.19.1
+      jupytext_version: 1.19.0
   kernelspec:
     display_name: Python 3 (ipykernel)
     language: python
@@ -72,7 +72,7 @@ def _signal_label(path):
     match = re.search(r"ZPrime(\d+)_1_(\d{4})", path.name)
     if match is None:
         return path.stem
-    return rf"$Z'_{{{match.group(1)}}}$, g=1"
+    return rf"$Z'_{{{match.group(1)}}}$"
 
 
 def _load_optional_signals(pattern):
@@ -84,7 +84,7 @@ ttbar_output = load(coffea_dir / "TTbar_2024_inclusive_noSyst.coffea")
 qcd_paths = list(coffea_dir.glob("QCD_2024_*_PT-*to*_noSyst.coffea"))
 qcd_components = _load_components(qcd_paths)
 data_outputs = [load(f"./outputs/dy/data_{era}_noSyst.coffea") for era in data_eras]
-signal_components = _load_optional_signals("ZPrime*_1_2024*_noSyst*.coffea")
+signal_components = _load_optional_signals("ZPrime*_1_2024*_noSyst.coffea")
 
 print("Loaded:")
 print("  TTbar")
@@ -127,7 +127,7 @@ def sum_hists(hists):
 
 
 def normalize_hist(h):
-    total = h.sum().value
+    total = h.sum(flow = True).value
     return h / total if total > 0 else h
 
 
@@ -386,7 +386,7 @@ for var, xlabel in plot_specs:
 ## FAIL-region inclusive shapes
 
 ```python
-fail_cat_ids = [0, 1]
+fail_cat_ids = [0, 1, 2, 3]
 
 for var, xlabel in plot_specs:
     fig, ax = plt.subplots(figsize=(10, 8))
@@ -413,16 +413,18 @@ for var, xlabel in plot_specs:
         ax=ax,
         histtype="step",
         color=CMS_COLORS[1],
-        linewidth=2.4,
+        linewidth=2,
         label="QCD total",
+        binwnorm = True,
     )
     hep.histplot(
         normalize_hist(h_ttbar),
         ax=ax,
         histtype="step",
         color=CMS_COLORS[0],
-        linewidth=2.4,
+        linewidth=2,
         label=r"$t\bar{t}$",
+        binwnorm = True,
     )
     for i, (label, h_signal) in enumerate(h_signals):
         hep.histplot(
@@ -431,8 +433,9 @@ for var, xlabel in plot_specs:
             histtype="step",
             color=CMS_COLORS[(i + 2) % len(CMS_COLORS)],
             linestyle="--",
-            linewidth=2.4,
+            linewidth=2,
             label=label,
+            binwnorm = True,
         )
     if include_data:
         hep.histplot(
@@ -442,12 +445,13 @@ for var, xlabel in plot_specs:
             color="black",
             label="Data",
         )
-
+    
     hplot.quick_label(xlabel=xlabel, data=include_data, ax=ax)
+    ax.set_yscale('log')
     ax.text(
         0.97,
         0.97,
-        "FAIL region\nunit-normalized shapes",
+        "Inclusive\nunit-normalized shapes",
         transform=ax.transAxes,
         ha="right",
         va="top",
@@ -458,6 +462,21 @@ for var, xlabel in plot_specs:
     ax.legend(fontsize=14)
     plt.tight_layout()
     plt.show()
+```
+
+```python
+ssum = signal_components[0][1]['chi'].project('chi').sum(flow = True).value
+tsum = h_ttbar.project('chi').sum(flow = True).value
+print(ssum)
+print(tsum)
+plt.stairs(signal_components[0][1]['chi'].project('chi').values()/ssum, signal_components[0][1]['chi'].project('chi').axes[0].edges)
+plt.stairs(h_ttbar.project('chi').values()/tsum, h_ttbar.project('chi').axes[0].edges)
+
+
+```
+
+```python
+
 ```
 
 ## Gen-level distributions (TTbar only)
