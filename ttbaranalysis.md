@@ -29,7 +29,7 @@ import json
 import os
 from types import SimpleNamespace
 
-from dask.distributed import Client, performance_report
+from dask.distributed import Client, performance_report, Security
 
 import warnings
 
@@ -610,7 +610,16 @@ def _start_dask_resources(args, repo_root, upload_to_dask, dask_memory, nworkers
     if not args.dask:
         return client, cluster
 
-    if args.env == "lpc":
+    if args.nocluster:
+        cluster = dask.distributed.LocalCluster(
+            n_workers=nworkers,
+            threads_per_worker=1,
+            scheduler_port=0,
+            dashboard_address=":8787",
+            protocol="tcp://",
+            security=Security(),
+        )
+    elif args.env == "lpc":
         if not args.nocluster:
             cluster = LPCCondorCluster(
                 memory=dask_memory,
@@ -619,17 +628,18 @@ def _start_dask_resources(args, repo_root, upload_to_dask, dask_memory, nworkers
             )
             cluster.adapt(minimum=1, maximum=100)
     elif args.env == "casa":
-        if not args.nocluster:
-            from coffea_casa import CoffeaCasaCluster
+        from coffea_casa import CoffeaCasaCluster
 
-            cluster = CoffeaCasaCluster(memory=dask_memory)
-            cluster.adapt(minimum=4, maximum=400)
+        cluster = CoffeaCasaCluster(memory=dask_memory)
+        cluster.adapt(minimum=4, maximum=400)
     else:
         cluster = dask.distributed.LocalCluster(
             n_workers=nworkers,
             threads_per_worker=1,
             scheduler_port=0,
             dashboard_address=":8787",
+            protocol="tcp://",
+            security=Security(),
         )
 
     client = Client(cluster)
