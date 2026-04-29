@@ -6,7 +6,7 @@ jupyter:
       extension: .md
       format_name: markdown
       format_version: '1.3'
-      jupytext_version: 1.19.0
+      jupytext_version: 1.19.1
   kernelspec:
     display_name: Python 3 (ipykernel)
     language: python
@@ -97,6 +97,10 @@ def get_hist(output, var, anacat_id, syst="nominal"):
     h = output[var][syst, ...]
     axis_name = _plot_axis_name(h)
     return h[anacat_id, :].project(axis_name)
+
+
+def get_hist_sumcats(output, var, anacat_ids, syst="nominal"):
+    return sum_hists([get_hist(output, var, anacat_id, syst) for anacat_id in anacat_ids])
 
 
 def sum_hists(hists):
@@ -346,6 +350,68 @@ for var, xlabel in plot_specs:
         handles, labels = sort_legend_entries(*ax.get_legend_handles_labels())
         ax.legend(handles, labels, ncol=2, fontsize=14)
 
+    plt.tight_layout()
+    plt.show()
+```
+
+## FAIL-region inclusive shapes
+
+```python
+fail_cat_ids = [0, 1]
+
+for var, xlabel in plot_specs:
+    fig, ax = plt.subplots(figsize=(10, 8))
+
+    h_ttbar = get_hist_sumcats(ttbar_output, var, fail_cat_ids)
+    raw_qcd_hists = [
+        get_hist_sumcats(output, var, fail_cat_ids)
+        for _, output in qcd_components
+    ]
+    h_qcd_total = sum_hists(raw_qcd_hists)
+    h_data = (
+        sum_hists([get_hist_sumcats(output, var, fail_cat_ids) for output in data_outputs])
+        if include_data
+        else None
+    )
+
+    hep.histplot(
+        normalize_hist(h_qcd_total),
+        ax=ax,
+        histtype="step",
+        color=CMS_COLORS[1],
+        linewidth=2.4,
+        label="QCD total",
+    )
+    hep.histplot(
+        normalize_hist(h_ttbar),
+        ax=ax,
+        histtype="step",
+        color=CMS_COLORS[0],
+        linewidth=2.4,
+        label=r"$t\bar{t}$",
+    )
+    if include_data:
+        hep.histplot(
+            normalize_hist(h_data),
+            ax=ax,
+            histtype="errorbar",
+            color="black",
+            label="Data",
+        )
+
+    hplot.quick_label(xlabel=xlabel, data=include_data, ax=ax)
+    ax.text(
+        0.97,
+        0.97,
+        "FAIL region\nunit-normalized shapes",
+        transform=ax.transAxes,
+        ha="right",
+        va="top",
+        fontsize=16,
+    )
+    ax.set_ylabel("Fraction of events")
+    ax.set_xlabel(xlabel, labelpad=20)
+    ax.legend(fontsize=14)
     plt.tight_layout()
     plt.show()
 ```
