@@ -93,6 +93,8 @@ DEFAULTS = dict(
     ht="1500",
     noSyst=False,
     ntuple=False,
+    ntupleContent="slim",
+    ntupleStorage="chunks",
     ntupleBaseDir="",
     overwrite=False,
     dask=False,
@@ -297,6 +299,20 @@ w_noSyst = widgets.Checkbox(
 w_ntuple = widgets.Checkbox(
     value=cfg["ntuple"], description="Ntuple", style=style, layout=layout
 )
+w_ntupleContent = widgets.Dropdown(
+    options=[("Slim 2DAlphabet", "slim"), ("Full diagnostics", "full")],
+    value=cfg["ntupleContent"] if cfg["ntupleContent"] in {"slim", "full"} else "slim",
+    description="Ntuple cols",
+    style=style,
+    layout=layout_wide,
+)
+w_ntupleStorage = widgets.Dropdown(
+    options=[("Write chunks", "chunks"), ("Accumulate memory", "accumulator")],
+    value=cfg["ntupleStorage"] if cfg["ntupleStorage"] in {"chunks", "accumulator"} else "chunks",
+    description="Ntuple mode",
+    style=style,
+    layout=layout_wide,
+)
 w_ntupleBaseDir = widgets.Text(
     value=cfg["ntupleBaseDir"],
     placeholder="optional shared chunk directory",
@@ -342,6 +358,8 @@ WIDGETS = {
     "ht": w_ht,
     "noSyst": w_noSyst,
     "ntuple": w_ntuple,
+    "ntupleContent": w_ntupleContent,
+    "ntupleStorage": w_ntupleStorage,
     "ntupleBaseDir": w_ntupleBaseDir,
     "overwrite": w_overwrite,
     "dask": w_dask,
@@ -417,6 +435,8 @@ for _widget in (
     w_ht,
     w_noSyst,
     w_ntuple,
+    w_ntupleContent,
+    w_ntupleStorage,
     w_ntupleBaseDir,
     w_overwrite,
 ):
@@ -464,6 +484,7 @@ print("----------------")
 import subprocess
 import traceback
 from write_ntuple import merge_root_ntuples
+from write_ntuple import write_ntuple
 
 
 def _build_sample_metadata(sample, subsection, iov, metadata):
@@ -568,6 +589,13 @@ def _merge_ntuple_chunks(coffea_file, tree_name):
     scale = float(output.get("normalization", {}).get("scale_factor", 1.0))
     merge_root_ntuples(chunk_files, root_file, tree_name=tree_name, weight_scale=scale)
     return root_file, len(chunk_files)
+
+
+def _write_accumulated_ntuple(coffea_file, tree_name):
+    root_file, _ = _ntuple_paths_for_coffea(coffea_file, "accumulated")
+    os.makedirs(os.path.dirname(root_file), exist_ok=True)
+    write_ntuple([coffea_file], root_file, tree_name=tree_name)
+    return root_file
 
 
 def _dask_write_visibility_probe(path):
@@ -905,7 +933,9 @@ def run_analysis(args):
                     )
 
                 try:
-                    if args.ntuple and args.dask:
+                    ntuple_mode = args.ntupleStorage if args.ntuple else "accumulator"
+
+                    if args.ntuple and args.dask and ntuple_mode == "chunks":
                         _check_dask_ntuple_chunk_visibility(client, ntuple_chunk_dir)
 
                     if not args.dask:
@@ -935,9 +965,10 @@ def run_analysis(args):
                                 blinding=args.blind,
                                 debug=True,
                                 produce_ntuple=args.ntuple,
-                                ntuple_mode="chunks" if args.ntuple else "accumulator",
-                                ntuple_output_dir=ntuple_chunk_dir if args.ntuple else None,
+                                ntuple_mode=ntuple_mode,
+                                ntuple_output_dir=ntuple_chunk_dir if ntuple_mode == "chunks" else None,
                                 ntuple_tree_name=sample,
+                                ntuple_columns=args.ntupleContent,
                                 sample_metadata=sample_metadata,
                             ),
                         )
@@ -967,9 +998,10 @@ def run_analysis(args):
                                 systematics=systematics,
                                 blinding=args.blind,
                                 produce_ntuple=args.ntuple,
-                                ntuple_mode="chunks" if args.ntuple else "accumulator",
-                                ntuple_output_dir=ntuple_chunk_dir if args.ntuple else None,
+                                ntuple_mode=ntuple_mode,
+                                ntuple_output_dir=ntuple_chunk_dir if ntuple_mode == "chunks" else None,
                                 ntuple_tree_name=sample,
+                                ntuple_columns=args.ntupleContent,
                                 sample_metadata=sample_metadata,
                             ),
                         )
@@ -978,11 +1010,15 @@ def run_analysis(args):
                     util.save(output, savefilename)
                     print("saving", savefilename)
                     if args.ntuple:
-                        merged_root_file, n_chunks = _merge_ntuple_chunks(savefilename, sample)
-                        print(
-                            f"merged {n_chunks} ntuple chunks: "
-                            f"{merged_root_file}"
-                        )
+                        if ntuple_mode == "chunks":
+                            merged_root_file, n_chunks = _merge_ntuple_chunks(savefilename, sample)
+                            print(
+                                f"merged {n_chunks} ntuple chunks: "
+                                f"{merged_root_file}"
+                            )
+                        else:
+                            merged_root_file = _write_accumulated_ntuple(savefilename, sample)
+                            print(f"wrote accumulated ntuple: {merged_root_file}")
                     savefilenames.append((savefilename, sample))
                 except Exception as exc:
                     failures.append(

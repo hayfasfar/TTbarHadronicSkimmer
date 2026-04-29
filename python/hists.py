@@ -20,6 +20,7 @@ def build_output_histograms(
     no_syst,
     produce_ntuple=False,
     produce_ntuple_chunks=False,
+    ntuple_columns="full",
 ):
     syst_category_strings = ["nominal"]
     if not no_syst:
@@ -121,7 +122,7 @@ def build_output_histograms(
         }
     )
     if produce_ntuple:
-        output["ntuple"] = build_ntuple_accumulators()
+        output["ntuple"] = build_ntuple_accumulators(ntuple_columns)
     if produce_ntuple_chunks:
         output["ntuple_chunks"] = processor.list_accumulator([])
     return output
@@ -134,11 +135,33 @@ _NTUPLE_FLOAT_COLS = [
     "jet0_rapidity", "jet1_rapidity",
 ]
 _NTUPLE_INT_COLS = ["anacat", "run", "lumi", "event"]
+_NTUPLE_COLUMN_PRESETS = {
+    "full": _NTUPLE_FLOAT_COLS + _NTUPLE_INT_COLS,
+    "slim": ["ttbarmass", "jet0_msd", "jet1_msd", "dy", "chi", "weight", "anacat"],
+}
 
 
-def build_ntuple_accumulators():
-    acc = {col: processor.column_accumulator(np.array([], dtype=np.float32))
-           for col in _NTUPLE_FLOAT_COLS}
-    acc.update({col: processor.column_accumulator(np.array([], dtype=np.int64))
-                for col in _NTUPLE_INT_COLS})
+def ntuple_columns_for_preset(preset):
+    if preset not in _NTUPLE_COLUMN_PRESETS:
+        raise ValueError(
+            f"Unknown ntuple column preset {preset!r}. "
+            f"Choose one of {sorted(_NTUPLE_COLUMN_PRESETS)}."
+        )
+    return _NTUPLE_COLUMN_PRESETS[preset]
+
+
+def build_ntuple_accumulators(ntuple_columns="full"):
+    columns = ntuple_columns_for_preset(ntuple_columns)
+    acc = {
+        col: processor.column_accumulator(np.array([], dtype=np.float32))
+        for col in columns
+        if col in _NTUPLE_FLOAT_COLS
+    }
+    acc.update(
+        {
+            col: processor.column_accumulator(np.array([], dtype=np.int64))
+            for col in columns
+            if col in _NTUPLE_INT_COLS
+        }
+    )
     return processor.dict_accumulator(acc)

@@ -43,7 +43,7 @@ from btagCorrections import btagCorrections
 from functions import getRapidity
 from categories import build_analysis_categories
 from jets import Run3JetManager, _AK4_PT_MIN, _AK4_ETA_MAX
-from hists import build_output_histograms
+from hists import build_output_histograms, ntuple_columns_for_preset
 from weights import Run3WeightManager
 from truthstudy import truthstudy_counts, build_gen_top_match_info, build_top_aligned_genjetak8_match_info
 
@@ -165,6 +165,7 @@ class TTbarResProcessor(processor.ProcessorABC):
         ntuple_mode='accumulator',
         ntuple_output_dir=None,
         ntuple_tree_name='ttbar',
+        ntuple_columns='full',
         sample_metadata=None,
     ):
         self.iov = iov
@@ -187,6 +188,7 @@ class TTbarResProcessor(processor.ProcessorABC):
         self.ntuple_mode = ntuple_mode
         self.ntuple_output_dir = ntuple_output_dir
         self.ntuple_tree_name = ntuple_tree_name
+        self.ntuple_columns = ntuple_columns_for_preset(ntuple_columns)
         self.store_ntuple_accumulator = produce_ntuple and ntuple_mode == 'accumulator'
         self.write_ntuple_chunks = produce_ntuple and ntuple_mode == 'chunks'
         self.sample_metadata = copy.deepcopy(sample_metadata or {})
@@ -240,6 +242,7 @@ class TTbarResProcessor(processor.ProcessorABC):
             no_syst=self.noSyst,
             produce_ntuple=self.store_ntuple_accumulator,
             produce_ntuple_chunks=self.write_ntuple_chunks,
+            ntuple_columns=ntuple_columns,
         )
 
     def _tscore(self, jet):
@@ -312,7 +315,7 @@ class TTbarResProcessor(processor.ProcessorABC):
         def _col(arr, dtype=np.float32):
             return ak.to_numpy(arr).astype(dtype)
 
-        return {
+        branches = {
             "jet0_pt":       _col(jetpt),
             "jet0_eta":      _col(jeteta),
             "jet0_phi":      _col(jetphi),
@@ -335,6 +338,7 @@ class TTbarResProcessor(processor.ProcessorABC):
             "lumi":          _col(events.luminosityBlock, dtype=np.int64),
             "event":         _col(events.event, dtype=np.int64),
         }
+        return {name: branches[name] for name in self.ntuple_columns}
 
     def _write_ntuple_chunk(self, events, labels_and_categories, *branch_args):
         """Write this nominal chunk to a small ROOT file and return its path."""
