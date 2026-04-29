@@ -69,7 +69,7 @@ def _load_components(paths):
 
 
 ttbar_output = load(coffea_dir / "TTbar_2024_inclusive_noSyst.coffea")
-qcd_paths = list(coffea_dir.glob("QCD_2024*_PT-*to*_noSyst.coffea"))
+qcd_paths = list(coffea_dir.glob("QCD_2024_*_PT-*to*_noSyst.coffea"))
 qcd_components = _load_components(qcd_paths)
 data_outputs = [load(f"./outputs/dy/data_{era}_noSyst.coffea") for era in data_eras]
 
@@ -106,6 +106,11 @@ def sum_hists(hists):
     for h in hists[1:]:
         result = result + h
     return result
+
+
+def normalize_hist(h):
+    total = h.sum().value
+    return h / total if total > 0 else h
 
 
 def scaled_qcd_hists(var, anacat_id, h_data, h_ttbar):
@@ -195,7 +200,8 @@ print("Categories:", ref["analysisCategories"])
 Each row: one variable.
 Left column: central (`|Δy| < 1`), right column: forward (`|Δy| > 1`).
 
-TTbar keeps its MC normalization. QCD pT bins keep their relative shapes, but their total
+TTbar keeps its MC normalization. QCD pT bins keep their relative shapes.
+When `include_data` and `normalize_qcd_to_data` are both enabled, QCD total
 normalization is set from data:
 
 `sum(QCD) = sum(data) - sum(TTbar)`
@@ -225,14 +231,69 @@ cat_pairs = [
 ]
 
 plot_density = False
+include_data = False
+normalize_qcd_to_data = include_data
+shape_compare = True
 
 for var, xlabel in plot_specs:
     fig, axes = plt.subplots(1, len(cat_pairs), figsize=(10 * len(cat_pairs), 8))
 
     for ax, (cat_id, cat_label) in zip(axes, cat_pairs):
-        h_data = get_data_hist(var, cat_id)
         h_ttbar = get_hist(ttbar_output, var, cat_id)
-        qcd_hists, qcd_scale, qcd_target = scaled_qcd_hists(var, cat_id, h_data, h_ttbar)
+        raw_qcd_hists = [get_hist(output, var, cat_id) for _, output in qcd_components]
+        h_qcd_total = sum_hists(raw_qcd_hists)
+
+        if shape_compare:
+            h_data = get_data_hist(var, cat_id) if include_data else None
+
+            hep.histplot(
+                normalize_hist(h_qcd_total),
+                ax=ax,
+                histtype="step",
+                color=CMS_COLORS[1],
+                linewidth=2.4,
+                label="QCD total",
+            )
+            hep.histplot(
+                normalize_hist(h_ttbar),
+                ax=ax,
+                histtype="step",
+                color=CMS_COLORS[0],
+                linewidth=2.4,
+                label=r"$t\bar{t}$",
+            )
+            if include_data:
+                hep.histplot(
+                    normalize_hist(h_data),
+                    ax=ax,
+                    histtype="errorbar",
+                    color="black",
+                    label="Data",
+                )
+
+            hplot.quick_label(xlabel=xlabel, data=include_data, ax=ax)
+            ax.text(
+                0.97,
+                0.97,
+                f"{cat_label}\nunit-normalized shapes",
+                transform=ax.transAxes,
+                ha="right",
+                va="top",
+                fontsize=16,
+            )
+            ax.set_ylabel("Fraction of events")
+            ax.set_xlabel(xlabel, labelpad=20)
+            ax.legend(fontsize=14)
+            continue
+
+        if normalize_qcd_to_data:
+            h_data = get_data_hist(var, cat_id)
+            qcd_hists, qcd_scale, qcd_target = scaled_qcd_hists(var, cat_id, h_data, h_ttbar)
+            label_text = f"{cat_label}\nQCD scale = {qcd_scale:.3g}\nQCD target = {qcd_target:.1f}"
+        else:
+            h_data = get_data_hist(var, cat_id) if include_data else None
+            qcd_hists = raw_qcd_hists
+            label_text = cat_label
 
         stack_hists = qcd_hists + [h_ttbar]
         stack_labels = [label for label, _ in qcd_components] + [r"$t\bar{t}$"]
@@ -259,21 +320,22 @@ for var, xlabel in plot_specs:
             density=plot_density,
             zorder=2,
         )
-        hep.histplot(
-            h_data,
-            ax=ax,
-            histtype="errorbar",
-            color="black",
-            label="Data",
-            density=plot_density,
-            zorder=4,
-        )
+        if include_data:
+            hep.histplot(
+                h_data,
+                ax=ax,
+                histtype="errorbar",
+                color="black",
+                label="Data",
+                density=plot_density,
+                zorder=4,
+            )
 
-        hplot.quick_label(xlabel=xlabel, data=True, ax=ax)
+        hplot.quick_label(xlabel=xlabel, data=include_data, ax=ax)
         ax.text(
             0.97,
             0.97,
-            f"{cat_label}\nQCD scale = {qcd_scale:.3g}\nQCD target = {qcd_target:.1f}",
+            label_text,
             transform=ax.transAxes,
             ha="right",
             va="top",
