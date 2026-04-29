@@ -98,6 +98,7 @@ DEFAULTS = dict(
     ntupleBaseDir="",
     overwrite=False,
     dask=False,
+    daskMemory=5,
     env="lpc",
     test=False,
     nocluster=False,
@@ -326,6 +327,16 @@ w_overwrite = widgets.Checkbox(
 w_dask = widgets.Checkbox(
     value=cfg["dask"], description="Dask", style=style, layout=layout
 )
+w_daskMemory = widgets.IntSlider(
+    value=int(cfg.get("daskMemory", DEFAULTS["daskMemory"])),
+    min=1,
+    max=20,
+    step=1,
+    description="Dask GB",
+    style=style,
+    layout=layout_wide,
+    continuous_update=False,
+)
 w_env = widgets.Dropdown(
     options=_env_opts,
     value=cfg["env"] if cfg["env"] in _env_opts else "lpc",
@@ -363,6 +374,7 @@ WIDGETS = {
     "ntupleBaseDir": w_ntupleBaseDir,
     "overwrite": w_overwrite,
     "dask": w_dask,
+    "daskMemory": w_daskMemory,
     "env": w_env,
     "test": w_test,
     "nocluster": w_nocluster,
@@ -442,7 +454,7 @@ for _widget in (
 ):
     display(_widget)
 print("Run options")
-for _widget in (w_dask, w_env, w_test, w_nocluster, btn_reset):
+for _widget in (w_dask, w_daskMemory, w_env, w_test, w_nocluster, btn_reset):
     display(_widget)
 print("Adjust widgets above, then run the next cell to apply settings.")
 ```
@@ -705,7 +717,7 @@ def run_analysis(args):
     useDeepAK8 = args.toptagger == "deepak8"
     useDeepCSV = args.btagger == "deepcsv"
     htCut = 1400.0 if args.ht == "1400" else 950.0
-    dask_memory = "5GB"
+    dask_memory = f"{int(args.daskMemory)}GB"
     chunksize_dask = 100000
     chunksize_futures = 200000
     maxchunks = 10 if args.test else None
