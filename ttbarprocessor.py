@@ -368,6 +368,8 @@ class TTbarResProcessor(processor.ProcessorABC):
             fout.mktree(self.ntuple_tree_name, {name: values.dtype for name, values in branches.items()})
             fout[self.ntuple_tree_name].extend(branches)
         os.replace(tmp_path, chunk_path)
+        if not os.path.exists(chunk_path):
+            raise RuntimeError(f"ntuple chunk write did not leave a visible file: {chunk_path}")
         return chunk_path
 
     def _fill_kinematic_hists(

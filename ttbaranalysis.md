@@ -93,6 +93,7 @@ DEFAULTS = dict(
     ht="1500",
     noSyst=False,
     ntuple=False,
+    ntupleBaseDir="",
     overwrite=False,
     dask=False,
     env="lpc",
@@ -296,6 +297,13 @@ w_noSyst = widgets.Checkbox(
 w_ntuple = widgets.Checkbox(
     value=cfg["ntuple"], description="Ntuple", style=style, layout=layout
 )
+w_ntupleBaseDir = widgets.Text(
+    value=cfg["ntupleBaseDir"],
+    placeholder="optional shared chunk directory",
+    description="Ntuple dir",
+    style=style,
+    layout=widgets.Layout(width="430px"),
+)
 w_overwrite = widgets.Checkbox(
     value=cfg["overwrite"], description="Overwrite", style=style, layout=layout
 )
@@ -334,6 +342,7 @@ WIDGETS = {
     "ht": w_ht,
     "noSyst": w_noSyst,
     "ntuple": w_ntuple,
+    "ntupleBaseDir": w_ntupleBaseDir,
     "overwrite": w_overwrite,
     "dask": w_dask,
     "env": w_env,
@@ -408,6 +417,7 @@ for _widget in (
     w_ht,
     w_noSyst,
     w_ntuple,
+    w_ntupleBaseDir,
     w_overwrite,
 ):
     display(_widget)
@@ -526,13 +536,14 @@ def _archive_existing_output(path, tag="old"):
     return archive_path
 
 
-def _ntuple_paths_for_coffea(coffea_file, run_id):
+def _ntuple_paths_for_coffea(coffea_file, run_id, chunk_base_dir=""):
     ntuple_dir = os.path.join(os.path.dirname(coffea_file), "ntuples")
     root_file = os.path.join(
         ntuple_dir, os.path.basename(coffea_file).replace(".coffea", "_ntuple.root")
     )
+    chunk_parent = os.path.abspath(chunk_base_dir.strip()) if chunk_base_dir.strip() else ntuple_dir
     chunk_dir = os.path.join(
-        ntuple_dir,
+        chunk_parent,
         "chunks",
         os.path.basename(coffea_file).replace(".coffea", f"_{run_id}"),
     )
@@ -544,9 +555,44 @@ def _merge_ntuple_chunks(coffea_file, tree_name):
     chunk_files = sorted(set(output.get("ntuple_chunks", [])))
     root_file, _ = _ntuple_paths_for_coffea(coffea_file, "merged")
     os.makedirs(os.path.dirname(root_file), exist_ok=True)
+    missing = [path for path in chunk_files if not os.path.exists(path)]
+    if missing:
+        preview = "\n".join(missing[:5])
+        raise FileNotFoundError(
+            f"{len(missing)} of {len(chunk_files)} ntuple chunk files are not visible "
+            f"to this notebook process. First missing paths:\n{preview}\n\n"
+            "This usually means Coffea-Casa workers wrote chunks on worker-local "
+            "storage. Set 'Ntuple dir' to a filesystem path that is shared between "
+            "the notebook and Dask workers, then rerun the section."
+        )
     scale = float(output.get("normalization", {}).get("scale_factor", 1.0))
     merge_root_ntuples(chunk_files, root_file, tree_name=tree_name, weight_scale=scale)
     return root_file, len(chunk_files)
+
+
+def _dask_write_visibility_probe(path):
+    os.makedirs(path, exist_ok=True)
+    probe_path = os.path.join(path, f"worker_probe_{os.getpid()}.txt")
+    with open(probe_path, "w") as f:
+        f.write("worker wrote this file\n")
+    return probe_path
+
+
+def _check_dask_ntuple_chunk_visibility(client, chunk_dir):
+    if client is None:
+        return
+
+    probe_dir = os.path.join(chunk_dir, "_visibility_probe")
+    probe_path = client.submit(_dask_write_visibility_probe, probe_dir).result()
+    if not os.path.exists(probe_path):
+        raise RuntimeError(
+            "Dask worker chunk output is not visible from this notebook.\n"
+            f"Worker reported writing: {probe_path}\n\n"
+            "Set 'Ntuple dir' to a shared filesystem location visible to both "
+            "Coffea-Casa workers and the notebook, then rerun. The default "
+            "repository-local outputs directory is not shared in this session."
+        )
+    os.remove(probe_path)
 
 
 def _close_dask_resources(client, cluster):
@@ -810,7 +856,9 @@ def run_analysis(args):
                     savefilename = savefilename.replace(".coffea", "_test.coffea")
 
                 ntuple_run_id = f"{int(time.time())}_{sample_index}_{section_index}"
-                _, ntuple_chunk_dir = _ntuple_paths_for_coffea(savefilename, ntuple_run_id)
+                _, ntuple_chunk_dir = _ntuple_paths_for_coffea(
+                    savefilename, ntuple_run_id, args.ntupleBaseDir
+                )
 
                 section_label = _format_section_label(IOV, sample, subsection)
                 if section_index + 1 < len(sections):
@@ -847,6 +895,9 @@ def run_analysis(args):
                     )
 
                 try:
+                    if args.ntuple and args.dask:
+                        _check_dask_ntuple_chunk_visibility(client, ntuple_chunk_dir)
+
                     if not args.dask:
                         runner = processor.Runner(
                             executor=processor.FuturesExecutor(workers=nworkers),
