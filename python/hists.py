@@ -56,6 +56,13 @@ def build_output_histograms(
         "mass": {
             "ttbarmass": hist.Hist(syst_axis, cats_axis, ttbarmass2D_axis, storage="weight", name="Counts"),
             "mtt_unwgt": hist.Hist(syst_axis, cats_axis, ttbarmass2D_axis, storage="weight", name="Counts"),
+            "mtt_vs_dy_vs_chi": hist.Hist(
+                ttbarmass2D_axis,
+                jetdy_axis,
+                chi_axis,
+                storage="weight",
+                name="Counts",
+            ),
             "mtt_vs_mt": hist.Hist(
                 syst_axis, cats_axis, jetmass2D_axis, ttbarmass2D_axis, storage="weight", name="Counts"
             ),

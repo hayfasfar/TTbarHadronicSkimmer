@@ -859,6 +859,13 @@ class TTbarResProcessor(processor.ProcessorABC):
                 jetpt, jeteta, jetphi, jety,
                 jetpt1, jeteta1, jetphi1, jety1,
             )
+            if correction == "nominal":
+                output['mtt_vs_dy_vs_chi'].fill(
+                    ttbarmass=ttbarmass[icat],
+                    jetdy=rapidity[icat],
+                    chi=chi[icat],
+                    weight=self.weights[correction].weight()[icat],
+                )
 
             # gen truth histograms
             if gen_top_match_info is not None:
