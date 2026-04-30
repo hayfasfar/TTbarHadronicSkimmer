@@ -44,6 +44,50 @@ def _combine_sequence(left: Any, right: Any) -> Any:
     return list(left) + list(right)
 
 
+def _axis_signature(axis: Any) -> tuple[Any, ...]:
+    if hasattr(axis, "edges"):
+        return (
+            type(axis).__name__,
+            axis.name,
+            tuple(np.asarray(axis.edges, dtype=float).tolist()),
+        )
+    return (
+        type(axis).__name__,
+        axis.name,
+        tuple(axis),
+    )
+
+
+def _hist_axis_summary(histogram: Hist) -> list[tuple[Any, ...]]:
+    return [_axis_signature(axis) for axis in histogram.axes]
+
+
+def _hist_axes_match(left: Hist, right: Hist) -> bool:
+    return _hist_axis_summary(left) == _hist_axis_summary(right)
+
+
+def _add_hist_values(left: Hist, right: Hist) -> Hist:
+    if not _hist_axes_match(left, right):
+        raise ValueError(
+            "histogram axes differ\n"
+            f"left axes: {_hist_axis_summary(left)}\n"
+            f"right axes: {_hist_axis_summary(right)}"
+        )
+
+    result = left.copy(deep=True)
+    result_view = result.view(flow=True)
+    right_view = right.view(flow=True)
+
+    if hasattr(result_view, "value") and hasattr(right_view, "value"):
+        result_view.value[...] = result_view.value + right_view.value
+        if hasattr(result_view, "variance") and hasattr(right_view, "variance"):
+            result_view.variance[...] = result_view.variance + right_view.variance
+    else:
+        result_view[...] = result_view + right_view
+
+    return result
+
+
 def _add_mapping_values(left: dict[Any, Any], right: dict[Any, Any], source: Path) -> dict[Any, Any]:
     result = copy.deepcopy(left)
     for key, value in right.items():
@@ -62,7 +106,14 @@ def _combine_value(key: str, left: Any, right: Any, source: Path) -> Any:
         try:
             return left + right
         except Exception as exc:
-            raise ValueError(f"Histogram {key!r} is not compatible in {source}") from exc
+            try:
+                return _add_hist_values(left, right)
+            except Exception as fallback_exc:
+                raise ValueError(
+                    f"Histogram {key!r} is not compatible in {source}.\n"
+                    f"Original add error: {exc}\n"
+                    f"Fallback add error: {fallback_exc}"
+                ) from fallback_exc
 
     if _is_mapping(left) and _is_mapping(right):
         return _add_mapping_values(left, right, source)
