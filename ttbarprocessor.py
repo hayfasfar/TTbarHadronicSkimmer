@@ -16,6 +16,9 @@ import hashlib
 import sys
 import os, psutil
 import copy
+import shutil
+import subprocess
+import tempfile
 import hist
 import scipy.stats as ss
 import numpy as np
@@ -43,6 +46,27 @@ from btagCorrections import btagCorrections
 from functions import getRapidity
 from categories import build_analysis_categories
 from jets import Run3JetManager, _AK4_PT_MIN, _AK4_ETA_MAX
+
+
+def _is_xrootd_path(path):
+    return str(path).startswith("root://")
+
+
+def _xrootd_url_parts(path):
+    prefix, remote_path = str(path).split("//", 1)
+    host, store_path = remote_path.split("/", 1)
+    return f"{prefix}//{host}", f"/{store_path.lstrip('/')}"
+
+
+def _xrootd_parent(path):
+    server, store_path = _xrootd_url_parts(path)
+    return server, os.path.dirname(store_path)
+
+
+def _copy_to_xrootd(local_path, remote_path):
+    server, remote_dir = _xrootd_parent(remote_path)
+    subprocess.run(["xrdfs", server, "mkdir", "-p", remote_dir], check=True)
+    subprocess.run(["xrdcp", "-f", local_path, remote_path], check=True)
 from hists import build_output_histograms, ntuple_columns_for_preset
 from weights import Run3WeightManager
 from truthstudy import truthstudy_counts, build_gen_top_match_info, build_top_aligned_genjetak8_match_info
@@ -361,19 +385,30 @@ class TTbarResProcessor(processor.ProcessorABC):
         chunk_hash = hashlib.sha1(chunk_key.encode()).hexdigest()[:16]
         safe_dataset = ''.join(c if c.isalnum() or c in '._-' else '_' for c in dataset)
 
-        os.makedirs(self.ntuple_output_dir, exist_ok=True)
-        chunk_path = os.path.join(
-            self.ntuple_output_dir,
-            f"{safe_dataset}_{chunk_hash}_{entrystart}_{entrystop}.root",
-        )
-        tmp_path = f"{chunk_path}.tmp.{os.getpid()}"
+        chunk_name = f"{safe_dataset}_{chunk_hash}_{entrystart}_{entrystop}.root"
+        chunk_path = os.path.join(self.ntuple_output_dir, chunk_name)
+        local_tmp_dir = None
+
+        if _is_xrootd_path(chunk_path):
+            local_tmp_dir = tempfile.mkdtemp(prefix="ttbar_ntuple_chunk_")
+            tmp_path = os.path.join(local_tmp_dir, f"{chunk_name}.tmp.{os.getpid()}")
+        else:
+            os.makedirs(self.ntuple_output_dir, exist_ok=True)
+            tmp_path = f"{chunk_path}.tmp.{os.getpid()}"
 
         with uproot.recreate(tmp_path) as fout:
             fout.mktree(self.ntuple_tree_name, {name: values.dtype for name, values in branches.items()})
             fout[self.ntuple_tree_name].extend(branches)
-        os.replace(tmp_path, chunk_path)
-        if not os.path.exists(chunk_path):
-            raise RuntimeError(f"ntuple chunk write did not leave a visible file: {chunk_path}")
+
+        if _is_xrootd_path(chunk_path):
+            try:
+                _copy_to_xrootd(tmp_path, chunk_path)
+            finally:
+                shutil.rmtree(local_tmp_dir, ignore_errors=True)
+        else:
+            os.replace(tmp_path, chunk_path)
+            if not os.path.exists(chunk_path):
+                raise RuntimeError(f"ntuple chunk write did not leave a visible file: {chunk_path}")
         return chunk_path
 
     def _fill_kinematic_hists(

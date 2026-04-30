@@ -571,16 +571,46 @@ def _archive_existing_output(path, tag="old"):
 
 LPC_EOS_XROOTD_PREFIX = "root://cmseos.fnal.gov//store/user/amandal2"
 LPC_EOS_MOUNT_PREFIX = "/eos/uscms/store/user/amandal2"
-LPC_DEFAULT_NTUPLE_BASE_DIR = f"{LPC_EOS_MOUNT_PREFIX}/TTbarHadronicSkimmer/ntuples"
+LPC_DEFAULT_NTUPLE_BASE_DIR = f"{LPC_EOS_XROOTD_PREFIX}/TTbarHadronicSkimmer/ntuples"
+
+
+def _is_xrootd_path(path):
+    return str(path).startswith("root://")
+
+
+def _xrootd_url_parts(path):
+    prefix, remote_path = str(path).split("//", 1)
+    host, store_path = remote_path.split("/", 1)
+    return f"{prefix}//{host}", f"/{store_path.lstrip('/')}"
+
+
+def _xrootd_parent(path):
+    server, store_path = _xrootd_url_parts(path)
+    return server, os.path.dirname(store_path)
+
+
+def _xrootd_exists(path):
+    server, store_path = _xrootd_url_parts(path)
+    return subprocess.run(
+        ["xrdfs", server, "stat", store_path],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ).returncode == 0
+
+
+def _copy_to_xrootd(local_path, remote_path):
+    server, remote_dir = _xrootd_parent(remote_path)
+    subprocess.run(["xrdfs", server, "mkdir", "-p", remote_dir], check=True)
+    subprocess.run(["xrdcp", "-f", local_path, remote_path], check=True)
 
 
 def _normalize_ntuple_base_dir(chunk_base_dir):
     chunk_base_dir = chunk_base_dir.strip()
     if not chunk_base_dir:
         return ""
-    if chunk_base_dir.startswith(LPC_EOS_XROOTD_PREFIX):
-        suffix = chunk_base_dir.removeprefix(LPC_EOS_XROOTD_PREFIX).lstrip("/")
-        return os.path.join(LPC_EOS_MOUNT_PREFIX, suffix)
+    if chunk_base_dir.startswith(LPC_EOS_MOUNT_PREFIX):
+        suffix = chunk_base_dir.removeprefix(LPC_EOS_MOUNT_PREFIX).lstrip("/")
+        return os.path.join(LPC_EOS_XROOTD_PREFIX, suffix)
     return chunk_base_dir
 
 
@@ -596,21 +626,25 @@ def _ntuple_paths_for_coffea(coffea_file, run_id, chunk_base_dir=""):
     root_file = os.path.join(
         ntuple_dir, os.path.basename(coffea_file).replace(".coffea", "_ntuple.root")
     )
-    chunk_parent = os.path.abspath(chunk_base_dir) if chunk_base_dir else ntuple_dir
+    chunk_parent = chunk_base_dir if _is_xrootd_path(chunk_base_dir) else os.path.abspath(chunk_base_dir) if chunk_base_dir else ntuple_dir
     chunk_dir = os.path.join(
         chunk_parent,
         "chunks",
         os.path.basename(coffea_file).replace(".coffea", f"_{run_id}"),
     )
-    return root_file, os.path.abspath(chunk_dir)
+    return root_file, chunk_dir if _is_xrootd_path(chunk_dir) else os.path.abspath(chunk_dir)
 
 
 def _merge_ntuple_chunks(coffea_file, tree_name, ntuple_base_dir=""):
     output = util.load(coffea_file)
     chunk_files = sorted(set(output.get("ntuple_chunks", [])))
     root_file, _ = _ntuple_paths_for_coffea(coffea_file, "merged", ntuple_base_dir)
-    os.makedirs(os.path.dirname(root_file), exist_ok=True)
-    missing = [path for path in chunk_files if not os.path.exists(path)]
+    if not _is_xrootd_path(root_file):
+        os.makedirs(os.path.dirname(root_file), exist_ok=True)
+    missing = [
+        path for path in chunk_files
+        if not (_xrootd_exists(path) if _is_xrootd_path(path) else os.path.exists(path))
+    ]
     if missing:
         preview = "\n".join(missing[:5])
         raise FileNotFoundError(
@@ -625,6 +659,33 @@ def _merge_ntuple_chunks(coffea_file, tree_name, ntuple_base_dir=""):
     return root_file, len(chunk_files)
 
 
+def _write_lpc_ntuple_merge_instructions(coffea_file, tree_name, ntuple_base_dir, n_chunks):
+    root_file, _ = _ntuple_paths_for_coffea(coffea_file, "merged", ntuple_base_dir)
+    instructions_file = coffea_file.replace(".coffea", "_merge_instructions.txt")
+    lines = [
+        "LPC ntuple chunk merge instructions",
+        "====================================",
+        "",
+        "The chunk ROOT files were already written locally on workers and copied to EOS with xrdcp.",
+        "Do not merge from /eos/uscms and do not write the merged ROOT file directly through /eos/uscms.",
+        "",
+        f"Coffea file with ntuple_chunks URLs: {coffea_file}",
+        f"TTree name: {tree_name}",
+        f"Number of chunk files: {n_chunks}",
+        f"Final merged ROOT output: {root_file}",
+        "",
+        "From an LPC interactive node, open this notebook, run the import/helper cells, then run:",
+        "",
+        f"_merge_ntuple_chunks({coffea_file!r}, {tree_name!r}, {ntuple_base_dir!r})",
+        "",
+        "That helper reads the chunk URLs from the .coffea file, writes the merged ROOT file to local",
+        "temporary storage first, and only then copies the completed file back to EOS with xrdcp.",
+    ]
+    with open(instructions_file, "w") as f:
+        f.write("\n".join(lines) + "\n")
+    return instructions_file, root_file
+
+
 def _write_accumulated_ntuple(coffea_file, tree_name):
     root_file, _ = _ntuple_paths_for_coffea(coffea_file, "accumulated")
     os.makedirs(os.path.dirname(root_file), exist_ok=True)
@@ -633,8 +694,20 @@ def _write_accumulated_ntuple(coffea_file, tree_name):
 
 
 def _dask_write_visibility_probe(path):
-    os.makedirs(path, exist_ok=True)
     probe_path = os.path.join(path, f"worker_probe_{os.getpid()}.txt")
+    if _is_xrootd_path(probe_path):
+        import tempfile
+
+        with tempfile.NamedTemporaryFile("w", delete=False) as f:
+            f.write("worker wrote this file\n")
+            local_probe_path = f.name
+        try:
+            _copy_to_xrootd(local_probe_path, probe_path)
+        finally:
+            os.remove(local_probe_path)
+        return probe_path
+
+    os.makedirs(path, exist_ok=True)
     with open(probe_path, "w") as f:
         f.write("worker wrote this file\n")
     return probe_path
@@ -646,7 +719,8 @@ def _check_dask_ntuple_chunk_visibility(client, chunk_dir):
 
     probe_dir = os.path.join(chunk_dir, "_visibility_probe")
     probe_path = client.submit(_dask_write_visibility_probe, probe_dir).result()
-    if not os.path.exists(probe_path):
+    probe_visible = _xrootd_exists(probe_path) if _is_xrootd_path(probe_path) else os.path.exists(probe_path)
+    if not probe_visible:
         raise RuntimeError(
             "Dask worker chunk output is not visible from this notebook.\n"
             f"Worker reported writing: {probe_path}\n\n"
@@ -654,7 +728,11 @@ def _check_dask_ntuple_chunk_visibility(client, chunk_dir):
             "Coffea-Casa workers and the notebook, then rerun. The default "
             "repository-local outputs directory is not shared in this session."
         )
-    os.remove(probe_path)
+    if _is_xrootd_path(probe_path):
+        server, store_path = _xrootd_url_parts(probe_path)
+        subprocess.run(["xrdfs", server, "rm", store_path], check=False)
+    else:
+        os.remove(probe_path)
 
 
 def _close_dask_resources(client, cluster):
@@ -683,6 +761,8 @@ def _start_dask_resources(args, repo_root, upload_to_dask, dask_memory, nworkers
         )
     elif args.env == "lpc":
         if not args.nocluster:
+            from lpcjobqueue import LPCCondorCluster
+
             cluster = LPCCondorCluster(
                 memory=dask_memory,
                 transfer_input_files=upload_to_dask,
@@ -730,9 +810,6 @@ def run_analysis(args):
     tic = time.time()
 
     savedir = f"outputs/dy/"
-
-    if args.dask and args.env == "lpc":
-        from lpcjobqueue import LPCCondorCluster
 
     samples = args.dataset
     IOV = args.iov
@@ -1050,13 +1127,29 @@ def run_analysis(args):
                     print("saving", savefilename)
                     if args.ntuple:
                         if ntuple_mode == "chunks":
-                            merged_root_file, n_chunks = _merge_ntuple_chunks(
-                                savefilename, sample, ntuple_base_dir
-                            )
-                            print(
-                                f"merged {n_chunks} ntuple chunks: "
-                                f"{merged_root_file}"
-                            )
+                            if args.env == "lpc":
+                                n_chunks = len(set(output.get("ntuple_chunks", [])))
+                                instructions_file, merged_root_file = _write_lpc_ntuple_merge_instructions(
+                                    savefilename, sample, ntuple_base_dir, n_chunks
+                                )
+                                print(
+                                    f"wrote {n_chunks} ntuple chunks to EOS; "
+                                    "skipping automatic merge on LPC"
+                                )
+                                print(f"merge instructions: {instructions_file}")
+                                print(f"eventual merged ROOT output: {merged_root_file}")
+                                print(
+                                    "merge later from an LPC interactive node with: "
+                                    f"_merge_ntuple_chunks({savefilename!r}, {sample!r}, {ntuple_base_dir!r})"
+                                )
+                            else:
+                                merged_root_file, n_chunks = _merge_ntuple_chunks(
+                                    savefilename, sample, ntuple_base_dir
+                                )
+                                print(
+                                    f"merged {n_chunks} ntuple chunks: "
+                                    f"{merged_root_file}"
+                                )
                         else:
                             merged_root_file = _write_accumulated_ntuple(savefilename, sample)
                             print(f"wrote accumulated ntuple: {merged_root_file}")
