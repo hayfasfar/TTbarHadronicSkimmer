@@ -862,7 +862,7 @@ class TTbarResProcessor(processor.ProcessorABC):
             if correction == "nominal":
                 output['mtt_vs_dy_vs_chi'].fill(
                     ttbarmass=ttbarmass[icat],
-                    jetdy=rapidity[icat],
+                    jetdy=np.abs(rapidity[icat]),
                     chi=chi[icat],
                     weight=self.weights[correction].weight()[icat],
                 )

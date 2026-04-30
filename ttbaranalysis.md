@@ -569,12 +569,34 @@ def _archive_existing_output(path, tag="old"):
     return archive_path
 
 
+LPC_EOS_XROOTD_PREFIX = "root://cmseos.fnal.gov//store/user/amandal2"
+LPC_EOS_MOUNT_PREFIX = "/eos/uscms/store/user/amandal2"
+LPC_DEFAULT_NTUPLE_BASE_DIR = f"{LPC_EOS_MOUNT_PREFIX}/TTbarHadronicSkimmer/ntuples"
+
+
+def _normalize_ntuple_base_dir(chunk_base_dir):
+    chunk_base_dir = chunk_base_dir.strip()
+    if not chunk_base_dir:
+        return ""
+    if chunk_base_dir.startswith(LPC_EOS_XROOTD_PREFIX):
+        suffix = chunk_base_dir.removeprefix(LPC_EOS_XROOTD_PREFIX).lstrip("/")
+        return os.path.join(LPC_EOS_MOUNT_PREFIX, suffix)
+    return chunk_base_dir
+
+
+def _default_ntuple_base_dir(args, ntuple_mode):
+    if args.ntuple and ntuple_mode == "chunks" and args.env == "lpc":
+        return LPC_DEFAULT_NTUPLE_BASE_DIR
+    return ""
+
+
 def _ntuple_paths_for_coffea(coffea_file, run_id, chunk_base_dir=""):
-    ntuple_dir = os.path.join(os.path.dirname(coffea_file), "ntuples")
+    chunk_base_dir = _normalize_ntuple_base_dir(chunk_base_dir)
+    ntuple_dir = chunk_base_dir if chunk_base_dir else os.path.join(os.path.dirname(coffea_file), "ntuples")
     root_file = os.path.join(
         ntuple_dir, os.path.basename(coffea_file).replace(".coffea", "_ntuple.root")
     )
-    chunk_parent = os.path.abspath(chunk_base_dir.strip()) if chunk_base_dir.strip() else ntuple_dir
+    chunk_parent = os.path.abspath(chunk_base_dir) if chunk_base_dir else ntuple_dir
     chunk_dir = os.path.join(
         chunk_parent,
         "chunks",
@@ -583,10 +605,10 @@ def _ntuple_paths_for_coffea(coffea_file, run_id, chunk_base_dir=""):
     return root_file, os.path.abspath(chunk_dir)
 
 
-def _merge_ntuple_chunks(coffea_file, tree_name):
+def _merge_ntuple_chunks(coffea_file, tree_name, ntuple_base_dir=""):
     output = util.load(coffea_file)
     chunk_files = sorted(set(output.get("ntuple_chunks", [])))
-    root_file, _ = _ntuple_paths_for_coffea(coffea_file, "merged")
+    root_file, _ = _ntuple_paths_for_coffea(coffea_file, "merged", ntuple_base_dir)
     os.makedirs(os.path.dirname(root_file), exist_ok=True)
     missing = [path for path in chunk_files if not os.path.exists(path)]
     if missing:
@@ -905,11 +927,6 @@ def run_analysis(args):
                 if args.test:
                     savefilename = savefilename.replace(".coffea", "_test.coffea")
 
-                ntuple_run_id = f"{int(time.time())}_{sample_index}_{section_index}"
-                _, ntuple_chunk_dir = _ntuple_paths_for_coffea(
-                    savefilename, ntuple_run_id, args.ntupleBaseDir
-                )
-
                 section_label = _format_section_label(IOV, sample, subsection)
                 if section_index + 1 < len(sections):
                     next_label = _format_section_label(
@@ -946,8 +963,18 @@ def run_analysis(args):
 
                 try:
                     ntuple_mode = args.ntupleStorage if args.ntuple else "accumulator"
+                    ntuple_base_dir = (
+                        _normalize_ntuple_base_dir(args.ntupleBaseDir)
+                        or _default_ntuple_base_dir(args, ntuple_mode)
+                    )
+                    ntuple_run_id = f"{int(time.time())}_{sample_index}_{section_index}"
+                    _, ntuple_chunk_dir = _ntuple_paths_for_coffea(
+                        savefilename, ntuple_run_id, ntuple_base_dir
+                    )
 
                     if args.ntuple and args.dask and ntuple_mode == "chunks":
+                        if args.env == "lpc":
+                            print(f"LPC ntuple chunks will be written under: {ntuple_chunk_dir}")
                         _check_dask_ntuple_chunk_visibility(client, ntuple_chunk_dir)
 
                     if not args.dask:
@@ -1023,7 +1050,9 @@ def run_analysis(args):
                     print("saving", savefilename)
                     if args.ntuple:
                         if ntuple_mode == "chunks":
-                            merged_root_file, n_chunks = _merge_ntuple_chunks(savefilename, sample)
+                            merged_root_file, n_chunks = _merge_ntuple_chunks(
+                                savefilename, sample, ntuple_base_dir
+                            )
                             print(
                                 f"merged {n_chunks} ntuple chunks: "
                                 f"{merged_root_file}"
