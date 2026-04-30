@@ -1134,13 +1134,15 @@ def run_analysis(args):
                                 )
                                 print(
                                     f"wrote {n_chunks} ntuple chunks to EOS; "
-                                    "skipping automatic merge on LPC"
+                                    "merging this section before continuing"
                                 )
                                 print(f"merge instructions: {instructions_file}")
-                                print(f"eventual merged ROOT output: {merged_root_file}")
+                                merged_root_file, n_chunks = _merge_ntuple_chunks(
+                                    savefilename, sample, ntuple_base_dir
+                                )
                                 print(
-                                    "merge later from an LPC interactive node with: "
-                                    f"_merge_ntuple_chunks({savefilename!r}, {sample!r}, {ntuple_base_dir!r})"
+                                    f"merged {n_chunks} ntuple chunks: "
+                                    f"{merged_root_file}"
                                 )
                             else:
                                 merged_root_file, n_chunks = _merge_ntuple_chunks(
