@@ -6,6 +6,7 @@ import glob
 from pathlib import Path
 from typing import Any, Iterable
 
+import numpy as np
 from coffea import processor, util
 from hist import Hist
 
@@ -20,36 +21,64 @@ def _as_paths(paths: Iterable[str | Path]) -> list[Path]:
     return selected
 
 
-def _add_mapping_values(left: dict[Any, Any], right: dict[Any, Any]) -> dict[Any, Any]:
+_METADATA_KEYS = {
+    "analysisCategories",
+    "sample_metadata",
+    "normalization",
+}
+
+
+def _is_mapping(value: Any) -> bool:
+    return isinstance(value, (dict, processor.defaultdict_accumulator, processor.dict_accumulator))
+
+
+def _is_sequence(value: Any) -> bool:
+    return isinstance(value, (list, tuple, processor.list_accumulator))
+
+
+def _combine_sequence(left: Any, right: Any) -> Any:
+    if isinstance(left, processor.list_accumulator) or isinstance(right, processor.list_accumulator):
+        return processor.list_accumulator(list(left) + list(right))
+    if isinstance(left, tuple):
+        return tuple(left) + tuple(right)
+    return list(left) + list(right)
+
+
+def _add_mapping_values(left: dict[Any, Any], right: dict[Any, Any], source: Path) -> dict[Any, Any]:
     result = copy.deepcopy(left)
     for key, value in right.items():
         if key in result:
-            result[key] = result[key] + value
+            result[key] = _combine_value(str(key), result[key], value, source)
         else:
             result[key] = copy.deepcopy(value)
     return result
 
 
 def _combine_value(key: str, left: Any, right: Any, source: Path) -> Any:
+    if key in _METADATA_KEYS:
+        return left
+
     if isinstance(left, Hist) and isinstance(right, Hist):
         try:
             return left + right
         except Exception as exc:
             raise ValueError(f"Histogram {key!r} is not compatible in {source}") from exc
 
-    if isinstance(left, processor.defaultdict_accumulator) and isinstance(
-        right, processor.defaultdict_accumulator
-    ):
-        return _add_mapping_values(left, right)
+    if _is_mapping(left) and _is_mapping(right):
+        return _add_mapping_values(left, right, source)
 
-    if isinstance(left, processor.dict_accumulator) and isinstance(
-        right, processor.dict_accumulator
-    ):
-        return _add_mapping_values(left, right)
+    if _is_sequence(left) and _is_sequence(right):
+        return _combine_sequence(left, right)
 
-    if isinstance(left, processor.list_accumulator) and isinstance(
-        right, processor.list_accumulator
+    if isinstance(left, processor.column_accumulator) and isinstance(
+        right, processor.column_accumulator
     ):
+        return processor.column_accumulator(np.concatenate([left.value, right.value]))
+
+    if isinstance(left, np.ndarray) and isinstance(right, np.ndarray):
+        return np.concatenate([left, right])
+
+    if isinstance(left, (int, float, np.number)) and isinstance(right, (int, float, np.number)):
         return left + right
 
     return left
@@ -72,11 +101,25 @@ def combine_coffea_outputs(
     combined = copy.deepcopy(util.load(paths[0]))
     if not isinstance(combined, dict):
         raise TypeError(f"{paths[0]} did not load to a dictionary-like coffea output.")
+    combined_metadata = [
+        {
+            "file": str(paths[0]),
+            "sample_metadata": copy.deepcopy(combined.get("sample_metadata", {})),
+            "normalization": copy.deepcopy(combined.get("normalization", {})),
+        }
+    ]
 
     for source in paths[1:]:
         current = util.load(source)
         if not isinstance(current, dict):
             raise TypeError(f"{source} did not load to a dictionary-like coffea output.")
+        combined_metadata.append(
+            {
+                "file": str(source),
+                "sample_metadata": copy.deepcopy(current.get("sample_metadata", {})),
+                "normalization": copy.deepcopy(current.get("normalization", {})),
+            }
+        )
 
         for key, value in current.items():
             if key not in combined:
@@ -85,6 +128,7 @@ def combine_coffea_outputs(
             combined[key] = _combine_value(key, combined[key], value, source)
 
     combined["combined_inputs"] = [str(path) for path in paths]
+    combined["combined_metadata"] = combined_metadata
 
     if output_file is not None:
         output_path = Path(output_file).expanduser()
