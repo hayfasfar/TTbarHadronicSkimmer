@@ -101,6 +101,69 @@ Example for a single QCD pT bin:
 python ttbaranalysis.py --iov 2024 --dataset QCD --subsample QCD_PT-1000to1500
 ```
 
+## Deriving 2024 Top-Tag Working Points
+
+The standalone top-tag WP workflow derives pT-binned GloParTv3 `TopvsQCD`
+thresholds from QCD mis-tag targets, then reports the matched-TTbar signal
+efficiency at those thresholds. It writes a histogram accumulator first, then a
+JSON/plot summary.
+
+On a laptop/Mac without XRootD, run only against the local ROOT file layout:
+
+```bash
+coffea-dask/bin/python run_toptag_wp.py \
+  --env local \
+  --rootdir /Users/aritra/Projects/rootfiles/ttbar \
+  --out outputs/toptag_wp_2024_local.coffea
+```
+
+For a local smoke test, cap the input to one file per dataset:
+
+```bash
+coffea-dask/bin/python run_toptag_wp.py \
+  --env local --test --maxfiles 1 \
+  --rootdir /Users/aritra/Projects/rootfiles/ttbar \
+  --out outputs/toptag_wp_2024_local_smoke.coffea
+```
+
+On LPC, the runner uses the full 2024 `data/nanoAOD/QCD.json` and
+`data/nanoAOD/TTbar.json` manifests through `root://cmsxrootd.fnal.gov/` and
+starts an `LPCCondorCluster`:
+
+```bash
+coffea-dask/bin/python run_toptag_wp.py \
+  --env lpc \
+  --out outputs/toptag_wp_2024_full.coffea
+```
+
+On coffea.casa, the same manifests are read through `root://xcache/`:
+
+```bash
+coffea-dask/bin/python run_toptag_wp.py \
+  --env casa \
+  --out outputs/toptag_wp_2024_full.coffea
+```
+
+For LPC/casa smoke tests, use `--test` to run two files per manifest dataset and
+one chunk per dataset:
+
+```bash
+coffea-dask/bin/python run_toptag_wp.py \
+  --env lpc --test \
+  --out outputs/toptag_wp_2024_lpc_smoke.coffea
+```
+
+After the Coffea output is written, derive the JSON thresholds and validation
+plots:
+
+```bash
+MPLCONFIGDIR=/tmp/mplconfig coffea-dask/bin/python plot_toptag_wp.py \
+  outputs/toptag_wp_2024_full.coffea \
+  --iov 2024 \
+  --json data/toptag/toptag_wp_2024.json \
+  --plotdir plots/images/toptag_wp/2024
+```
+
 ## Output
 
 The processor saves a `.coffea` file per dataset/era to `outputs/dy/`. Files are named automatically, e.g.:
