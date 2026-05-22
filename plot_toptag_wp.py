@@ -50,6 +50,11 @@ TARGETS = {
 }
 TARGET_ORDER = ['very_tight', 'tight', 'medium', 'loose', 'very_loose']
 
+# CMS style uses large axis labels by default, so keep canvases roomy enough
+# that labels, ticks, legends, and the CMS header do not dominate the plot.
+SINGLE_PANEL_FIGSIZE = (10, 8)
+SCORE_PANEL_SIZE = (6.7, 5.2)
+
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -211,7 +216,12 @@ def plot_score_dists(cache, iov, plotdir):
     n = len(cache['bkg'])
     ncol = 3
     nrow = int(np.ceil(n / ncol))
-    fig, axes = plt.subplots(nrow, ncol, figsize=(5 * ncol, 4 * nrow), squeeze=False)
+    fig, axes = plt.subplots(
+        nrow,
+        ncol,
+        figsize=(SCORE_PANEL_SIZE[0] * ncol, SCORE_PANEL_SIZE[1] * nrow),
+        squeeze=False,
+    )
     for i in range(nrow * ncol):
         ax = axes[i // ncol][i % ncol]
         if i >= n:
@@ -233,7 +243,7 @@ def plot_score_dists(cache, iov, plotdir):
 def plot_roc(cache, iov, plotdir):
     edges = cache['disc_edges']
     pt_edges = cache['pt_edges']
-    fig, ax = plt.subplots(figsize=(7, 6))
+    fig, ax = plt.subplots(figsize=SINGLE_PANEL_FIGSIZE)
     for i in range(len(cache['bkg'])):
         bkg = cache['bkg'][i]; sig = cache['sig'][i]
         if bkg.sum() <= 0 or sig is None or sig.sum() <= 0:
@@ -255,7 +265,7 @@ def plot_roc(cache, iov, plotdir):
 
 
 def plot_vs_pt(result, key, ylabel, fname, iov, plotdir, logy=False, target_lines=False):
-    fig, ax = plt.subplots(figsize=(7, 6))
+    fig, ax = plt.subplots(figsize=SINGLE_PANEL_FIGSIZE)
     for wp in TARGET_ORDER:
         wpd = result['working_points'][wp]
         x = [0.5 * (b[0] + b[1]) for b in wpd['pt_bins']]
@@ -311,7 +321,7 @@ def plot_mistag_vs_msd(output, result, iov, plotdir, wp='medium'):
     with np.errstate(divide='ignore', invalid='ignore'):
         mistag = np.where(denom > 0, numer / denom, np.nan)
     centers = 0.5 * (msd_edges[:-1] + msd_edges[1:])
-    fig, ax = plt.subplots(figsize=(7, 6))
+    fig, ax = plt.subplots(figsize=SINGLE_PANEL_FIGSIZE)
     ax.step(centers, mistag, where='mid', color='C3')
     ax.axhline(TARGETS[wp], color='grey', ls='--', label=f'target {TARGETS[wp]*100:.1f}%')
     ax.axvspan(105, 210, color='C0', alpha=0.1, label='mass window')
