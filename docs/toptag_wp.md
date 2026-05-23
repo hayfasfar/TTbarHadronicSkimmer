@@ -33,8 +33,9 @@ No ntuples are produced — histograms only.
 
 ## Requirements
 
-- Python env with the analysis stack: `coffea-dask/bin/python` (coffea ≥ 2026,
-  hist, uproot, mplhep).
+- Python env with the analysis stack (coffea ≥ 2026, hist, uproot, mplhep).
+  Local laptop examples use `coffea-dask/bin/python`; LPC and coffea.casa
+  provide the environment, so use `python` there.
 - **NanoAOD v15** inputs — the `globalParT3_*` branches only exist from v15.
 - Local input layout (default `--rootdir ~/Projects/rootfiles/ttbar`):
   ```
@@ -66,28 +67,28 @@ No ntuples are produced — histograms only.
 
 3. **Full LPC run over the 2024 manifests:**
    ```bash
-   coffea-dask/bin/python run_toptag_wp.py \
+   python run_toptag_wp.py \
        --env lpc \
        --out outputs/toptag_wp_2024_full.coffea
    ```
 
 4. **coffea.casa run over the 2024 manifests:**
    ```bash
-   coffea-dask/bin/python run_toptag_wp.py \
+   python run_toptag_wp.py \
        --env casa \
        --out outputs/toptag_wp_2024_full.coffea
    ```
 
 5. **Remote smoke test** (2 files per manifest dataset, 1 chunk per dataset):
    ```bash
-   coffea-dask/bin/python run_toptag_wp.py \
+   python run_toptag_wp.py \
        --env lpc --test \
        --out outputs/toptag_wp_2024_lpc_smoke.coffea
    ```
 
 6. **Derive WPs and make plots:**
    ```bash
-   MPLCONFIGDIR=/tmp/mplconfig coffea-dask/bin/python plot_toptag_wp.py \
+   MPLCONFIGDIR=/tmp/mplconfig python plot_toptag_wp.py \
        outputs/toptag_wp_2024_full.coffea \
        --iov 2024 \
        --json data/toptag/toptag_wp_2024.json \
