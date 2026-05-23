@@ -91,10 +91,13 @@ No ntuples are produced — histograms only.
        outputs/toptag_wp_2024_full.coffea \
        --iov 2024 \
        --json data/toptag/toptag_wp_2024.json \
-       --plotdir plots/images/toptag_wp/2024
+       --plotdir plots/images/toptag_wp/2024 \
+       --score-rebin 10
    ```
    Writes `data/toptag/toptag_wp_2024.json` and plots under
    `plots/images/toptag_wp/2024/`, and prints a threshold/signal-eff table.
+   `--score-rebin` is display-only for `score_distributions.png`; the WP
+   derivation still uses the fine score histogram.
 
 ## Outputs
 

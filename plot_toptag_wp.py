@@ -54,6 +54,7 @@ TARGET_ORDER = ['very_tight', 'tight', 'medium', 'loose', 'very_loose']
 # that labels, ticks, legends, and the CMS header do not dominate the plot.
 SINGLE_PANEL_FIGSIZE = (10, 8)
 SCORE_PANEL_SIZE = (6.7, 5.2)
+DEFAULT_SCORE_REBIN = 10
 
 
 # ---------------------------------------------------------------------------
@@ -125,6 +126,20 @@ def effective_entries(counts, variance):
     sw = counts.sum()
     sw2 = variance.sum()
     return (sw ** 2 / sw2) if sw2 > 0 else 0.0
+
+
+def rebin_counts(counts, edges, factor):
+    """Merge neighboring 1D bins for display without changing total weight."""
+    if factor <= 1:
+        return counts, edges
+
+    rebinned = []
+    rebinned_edges = [edges[0]]
+    for start in range(0, len(counts), factor):
+        stop = min(start + factor, len(counts))
+        rebinned.append(counts[start:stop].sum())
+        rebinned_edges.append(edges[stop])
+    return np.asarray(rebinned), np.asarray(rebinned_edges)
 
 
 # ---------------------------------------------------------------------------
@@ -209,9 +224,8 @@ def _cms(ax, iov):
         hep.cms.label("Preliminary", data=False, year=iov, ax=ax, fontsize=14)
 
 
-def plot_score_dists(cache, iov, plotdir):
+def plot_score_dists(cache, iov, plotdir, score_rebin=DEFAULT_SCORE_REBIN):
     edges = cache['disc_edges']
-    centers = 0.5 * (edges[:-1] + edges[1:])
     pt_edges = cache['pt_edges']
     n = len(cache['bkg'])
     ncol = 3
@@ -228,9 +242,11 @@ def plot_score_dists(cache, iov, plotdir):
             ax.axis('off'); continue
         bkg = cache['bkg'][i]; sig = cache['sig'][i]
         if bkg.sum() > 0:
-            ax.step(centers, bkg / bkg.sum(), where='mid', label='QCD (bkg)', color='C3')
+            bkg_plot, plot_edges = rebin_counts(bkg, edges, score_rebin)
+            ax.stairs(bkg_plot / bkg_plot.sum(), plot_edges, label='QCD (bkg)', color='C3')
         if sig is not None and sig.sum() > 0:
-            ax.step(centers, sig / sig.sum(), where='mid', label='TTbar matched (sig)', color='C0')
+            sig_plot, plot_edges = rebin_counts(sig, edges, score_rebin)
+            ax.stairs(sig_plot / sig_plot.sum(), plot_edges, label='TTbar matched (sig)', color='C0')
         ax.set_yscale('log')
         ax.set_xlabel('TopvsQCD'); ax.set_ylabel('a.u.')
         ax.set_title(f'{pt_edges[i]:.0f} < pT < {pt_edges[i+1]:.0f} GeV', fontsize=11)
@@ -342,6 +358,8 @@ def main():
     ap.add_argument('--iov', default='2024')
     ap.add_argument('--json', default=None)
     ap.add_argument('--plotdir', default=None)
+    ap.add_argument('--score-rebin', type=int, default=DEFAULT_SCORE_REBIN,
+                    help='merge this many fine TopvsQCD bins in score_distributions.png only')
     args = ap.parse_args()
 
     out_json = args.json or f'data/toptag/toptag_wp_{args.iov}.json'
@@ -364,7 +382,7 @@ def main():
     print(f"wrote {out_json}")
 
     plots = [
-        plot_score_dists(cache, args.iov, plotdir),
+        plot_score_dists(cache, args.iov, plotdir, score_rebin=args.score_rebin),
         plot_roc(cache, args.iov, plotdir),
         plot_vs_pt(result, 'threshold', 'TopvsQCD threshold', 'wp_threshold_vs_pt.png',
                    args.iov, plotdir),
