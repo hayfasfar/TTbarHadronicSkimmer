@@ -117,9 +117,10 @@ No ntuples are produced — histograms only.
   provenance.
 - Plots in `plots/images/toptag_wp/<iov>/`:
   - `score_distributions.png` — signal vs background `TopvsQCD`, per pT bin.
-  - `data_mc_score_distributions.png` — shape-normalized data vs inclusive MC
+  - `data_mc_score_distributions.png` — data points over stacked QCD+TTbar
     `TopvsQCD`, per pT bin, when `--data-infile` is supplied or data is present
-    in the input accumulator.
+    in the input accumulator. TTbar uses its nominal MC normalization; QCD is
+    scaled in each pT panel to `Data - TTbar`.
   - `roc.png` — signal eff vs mis-tag, log-x, target points marked.
   - `wp_threshold_vs_pt.png` — derived thresholds vs pT (the parametrization).
   - `signal_eff_vs_pt.png` — signal eff at each WP vs pT.

@@ -153,7 +153,7 @@ python run_toptag_wp.py \
   --out outputs/toptag_wp_2024_lpc_smoke.coffea
 ```
 
-Run data separately when you only want the discriminator data/MC shape check:
+Run data separately when you want the discriminator Data/MC check:
 
 ```bash
 python run_toptag_wp.py \
@@ -162,7 +162,8 @@ python run_toptag_wp.py \
 ```
 
 After the Coffea output is written, derive the JSON thresholds and validation
-plots. Add `--data-infile` to produce `data_mc_score_distributions.png`:
+plots. Add `--data-infile` to produce `data_mc_score_distributions.png`, where
+TTbar is nominally normalized and QCD is scaled per pT panel to `Data - TTbar`:
 
 ```bash
 MPLCONFIGDIR=/tmp/mplconfig python plot_toptag_wp.py \

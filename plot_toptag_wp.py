@@ -165,6 +165,13 @@ def rebin_counts(counts, edges, factor):
     return np.asarray(rebinned), np.asarray(rebinned_edges)
 
 
+def qcd_scale_to_data_minus_ttbar(data_total, ttbar_total, qcd_total):
+    """Per-panel QCD scale for Data/MC score plots."""
+    if qcd_total <= 0:
+        return 0.0
+    return max(data_total - ttbar_total, 0.0) / qcd_total
+
+
 # ---------------------------------------------------------------------------
 # derivation
 # ---------------------------------------------------------------------------
@@ -283,7 +290,7 @@ def _load_data_output(data_infile):
 
 def plot_data_mc_score_dists(mc_output, data_output, iov, plotdir,
                              score_rebin=DEFAULT_SCORE_REBIN):
-    """Shape-normalized TopvsQCD distribution: collision data vs inclusive MC."""
+    """TopvsQCD Data/MC plot with stacked MC and per-panel QCD normalization."""
     if data_output is None:
         data_output = mc_output
 
@@ -291,9 +298,9 @@ def plot_data_mc_score_dists(mc_output, data_output, iov, plotdir,
     hdata = data_output['score']
     mc_meta = metadata_with_sumw(mc_output)
     data_meta = metadata_with_sumw(data_output)
-    mc_ds = classify_mc_datasets(mc_meta)
+    ttbar_ds, qcd_ds = classify_datasets(mc_meta)
     data_ds = classify_data_datasets(data_meta)
-    if not mc_ds or not data_ds:
+    if not data_ds or (not qcd_ds and not ttbar_ds):
         return None
 
     lumi_pb = mc_output.get('run_info', {}).get('lumi_pb')
@@ -315,26 +322,62 @@ def plot_data_mc_score_dists(mc_output, data_output, iov, plotdir,
         if i >= n:
             ax.axis('off'); continue
 
-        mc_c, _ = combine_disc(hmc, mc_ds, 'incl', i, mc_scales)
+        qcd_c, _ = combine_disc(hmc, qcd_ds, 'incl', i, mc_scales)
+        ttbar_c, _ = combine_disc(hmc, ttbar_ds, 'incl', i, mc_scales)
         data_c, data_v = combine_disc(hdata, data_ds, 'incl', i, data_scales)
-
-        if mc_c is not None and mc_c.sum() > 0:
-            mc_plot, plot_edges = rebin_counts(mc_c, edges, score_rebin)
-            ax.stairs(mc_plot / mc_plot.sum(), plot_edges,
-                      label='MC QCD+TTbar (shape)', color='C2')
 
         if data_c is not None and data_c.sum() > 0:
             data_plot, plot_edges = rebin_counts(data_c, edges, score_rebin)
             data_var, _ = rebin_counts(data_v, edges, score_rebin)
             centers = 0.5 * (plot_edges[:-1] + plot_edges[1:])
-            total = data_plot.sum()
-            y = data_plot / total
-            yerr = np.sqrt(data_var) / total
-            ax.errorbar(centers, y, yerr=yerr, fmt='o', ms=3, lw=1,
-                        label='Data (shape)', color='black')
+            widths = np.diff(plot_edges)
+
+            if qcd_c is not None and qcd_c.sum() > 0:
+                qcd_plot, _ = rebin_counts(qcd_c, edges, score_rebin)
+            else:
+                qcd_plot = np.zeros_like(data_plot)
+            if ttbar_c is not None and ttbar_c.sum() > 0:
+                ttbar_plot, _ = rebin_counts(ttbar_c, edges, score_rebin)
+            else:
+                ttbar_plot = np.zeros_like(data_plot)
+
+            qcd_scale = qcd_scale_to_data_minus_ttbar(
+                data_plot.sum(),
+                ttbar_plot.sum(),
+                qcd_plot.sum(),
+            )
+            qcd_plot = qcd_plot * qcd_scale
+            bottom = np.zeros_like(qcd_plot)
+            ax.bar(
+                plot_edges[:-1],
+                qcd_plot,
+                width=widths,
+                align='edge',
+                bottom=bottom,
+                label=f'QCD (scaled {qcd_scale:.2g})',
+                color='C3',
+                alpha=0.65,
+                linewidth=0,
+            )
+            bottom = bottom + qcd_plot
+            ax.bar(
+                plot_edges[:-1],
+                ttbar_plot,
+                width=widths,
+                align='edge',
+                bottom=bottom,
+                label='TTbar',
+                color='C0',
+                alpha=0.65,
+                linewidth=0,
+            )
+
+            yerr = np.sqrt(data_var)
+            ax.errorbar(centers, data_plot, yerr=yerr, fmt='o', ms=3, lw=1,
+                        label='Data', color='black')
 
         ax.set_yscale('log')
-        ax.set_xlabel('TopvsQCD'); ax.set_ylabel('a.u.')
+        ax.set_xlabel('TopvsQCD'); ax.set_ylabel('Events / bin')
         ax.set_title(f'{pt_edges[i]:.0f} < pT < {pt_edges[i+1]:.0f} GeV', fontsize=11)
         ax.legend(fontsize=9)
 
