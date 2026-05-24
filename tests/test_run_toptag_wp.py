@@ -26,6 +26,7 @@ class TopTagRunnerFilesetTest(unittest.TestCase):
             tmpdir = Path(tmp)
             qcd_json = tmpdir / "QCD.json"
             ttbar_json = tmpdir / "TTbar.json"
+            data_json = tmpdir / "data.json"
             qcd_json.write_text(json.dumps({
                 "2024": {
                     "QCD_PT-600to800": {
@@ -54,6 +55,11 @@ class TopTagRunnerFilesetTest(unittest.TestCase):
                     }
                 }
             }))
+            data_json.write_text(json.dumps({
+                "2024": {
+                    "C": ["/store/data/c.root", "/store/data/d.root"]
+                }
+            }))
 
             fileset = run_toptag_wp.build_manifest_fileset(
                 qcd_json,
@@ -61,6 +67,7 @@ class TopTagRunnerFilesetTest(unittest.TestCase):
                 "2024",
                 redirector="root://cmsxrootd.fnal.gov/",
                 maxfiles=1,
+                data_json=data_json,
             )
 
         self.assertEqual(set(fileset), {"QCD_PT-600to800", "TTbar"})
@@ -68,6 +75,36 @@ class TopTagRunnerFilesetTest(unittest.TestCase):
             "root://cmsxrootd.fnal.gov//store/qcd/a.root"
         ])
         self.assertEqual(fileset["TTbar"]["metadata"]["xsec_pb"], 350.6)
+
+    def test_manifest_fileset_can_run_data_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            qcd_json = tmpdir / "QCD.json"
+            ttbar_json = tmpdir / "TTbar.json"
+            data_json = tmpdir / "data.json"
+            qcd_json.write_text(json.dumps({"2024": {}}))
+            ttbar_json.write_text(json.dumps({"2024": {}}))
+            data_json.write_text(json.dumps({
+                "2024": {
+                    "C": ["/store/data/c.root", "/store/data/d.root"]
+                }
+            }))
+
+            fileset = run_toptag_wp.build_manifest_fileset(
+                qcd_json,
+                ttbar_json,
+                "2024",
+                redirector="root://cmsxrootd.fnal.gov/",
+                maxfiles=1,
+                samples=["Data"],
+                data_json=data_json,
+            )
+
+        self.assertEqual(set(fileset), {"Data_C"})
+        self.assertEqual(fileset["Data_C"]["files"], [
+            "root://cmsxrootd.fnal.gov//store/data/c.root"
+        ])
+        self.assertFalse(fileset["Data_C"]["metadata"]["is_mc"])
 
 
 if __name__ == "__main__":

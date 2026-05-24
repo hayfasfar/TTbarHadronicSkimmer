@@ -60,15 +60,38 @@ DEFAULT_SCORE_REBIN = 10
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
+def _is_data_metadata(m):
+    return (not m.get('is_mc', True)) or str(m.get('sample', '')).lower() in {'data', 'jetmet'}
+
+
 def classify_datasets(meta):
     """Return (signal_datasets, background_datasets) from datasets_metadata."""
     sig, bkg = [], []
     for ds, m in meta.items():
+        if _is_data_metadata(m):
+            continue
         if str(m.get('sample', ds)).upper().startswith('TT'):
             sig.append(ds)
         else:
             bkg.append(ds)
     return sig, bkg
+
+
+def classify_data_datasets(meta):
+    """Return datasets marked as collision data."""
+    return [ds for ds, m in meta.items() if _is_data_metadata(m)]
+
+
+def classify_mc_datasets(meta):
+    """Return MC datasets used for inclusive Data/MC score comparisons."""
+    return [ds for ds, m in meta.items() if not _is_data_metadata(m)]
+
+
+def metadata_with_sumw(output):
+    meta = dict(output.get('datasets_metadata', {}))
+    for ds in meta:
+        meta[ds]['_sumw'] = float(output['sumw'].get(ds, 0.0))
+    return meta
 
 
 def dataset_scale(ds, meta, lumi_pb):
@@ -147,11 +170,7 @@ def rebin_counts(counts, edges, factor):
 # ---------------------------------------------------------------------------
 def derive(output, iov, lumi_pb):
     hscore = output['score']
-    meta = dict(output.get('datasets_metadata', {}))
-    # inject sumw into metadata for scaling
-    for ds in meta:
-        meta[ds]['_sumw'] = float(output['sumw'].get(ds, 0.0))
-
+    meta = metadata_with_sumw(output)
     sig_ds, bkg_ds = classify_datasets(meta)
     scales = {ds: dataset_scale(ds, meta, lumi_pb) for ds in meta}
 
@@ -256,6 +275,74 @@ def plot_score_dists(cache, iov, plotdir, score_rebin=DEFAULT_SCORE_REBIN):
     fig.savefig(p, dpi=120); plt.close(fig); return p
 
 
+def _load_data_output(data_infile):
+    if not data_infile:
+        return None
+    return util.load(data_infile)
+
+
+def plot_data_mc_score_dists(mc_output, data_output, iov, plotdir,
+                             score_rebin=DEFAULT_SCORE_REBIN):
+    """Shape-normalized TopvsQCD distribution: collision data vs inclusive MC."""
+    if data_output is None:
+        data_output = mc_output
+
+    hmc = mc_output['score']
+    hdata = data_output['score']
+    mc_meta = metadata_with_sumw(mc_output)
+    data_meta = metadata_with_sumw(data_output)
+    mc_ds = classify_mc_datasets(mc_meta)
+    data_ds = classify_data_datasets(data_meta)
+    if not mc_ds or not data_ds:
+        return None
+
+    lumi_pb = mc_output.get('run_info', {}).get('lumi_pb')
+    mc_scales = {ds: dataset_scale(ds, mc_meta, lumi_pb) for ds in mc_meta}
+    data_scales = {ds: 1.0 for ds in data_meta}
+    edges = hmc.axes['disc'].edges
+    pt_edges = hmc.axes['pt'].edges
+    n = hmc.axes['pt'].size
+    ncol = 3
+    nrow = int(np.ceil(n / ncol))
+    fig, axes = plt.subplots(
+        nrow,
+        ncol,
+        figsize=(SCORE_PANEL_SIZE[0] * ncol, SCORE_PANEL_SIZE[1] * nrow),
+        squeeze=False,
+    )
+    for i in range(nrow * ncol):
+        ax = axes[i // ncol][i % ncol]
+        if i >= n:
+            ax.axis('off'); continue
+
+        mc_c, _ = combine_disc(hmc, mc_ds, 'incl', i, mc_scales)
+        data_c, data_v = combine_disc(hdata, data_ds, 'incl', i, data_scales)
+
+        if mc_c is not None and mc_c.sum() > 0:
+            mc_plot, plot_edges = rebin_counts(mc_c, edges, score_rebin)
+            ax.stairs(mc_plot / mc_plot.sum(), plot_edges,
+                      label='MC QCD+TTbar (shape)', color='C2')
+
+        if data_c is not None and data_c.sum() > 0:
+            data_plot, plot_edges = rebin_counts(data_c, edges, score_rebin)
+            data_var, _ = rebin_counts(data_v, edges, score_rebin)
+            centers = 0.5 * (plot_edges[:-1] + plot_edges[1:])
+            total = data_plot.sum()
+            y = data_plot / total
+            yerr = np.sqrt(data_var) / total
+            ax.errorbar(centers, y, yerr=yerr, fmt='o', ms=3, lw=1,
+                        label='Data (shape)', color='black')
+
+        ax.set_yscale('log')
+        ax.set_xlabel('TopvsQCD'); ax.set_ylabel('a.u.')
+        ax.set_title(f'{pt_edges[i]:.0f} < pT < {pt_edges[i+1]:.0f} GeV', fontsize=11)
+        ax.legend(fontsize=9)
+
+    fig.tight_layout()
+    p = os.path.join(plotdir, 'data_mc_score_distributions.png')
+    fig.savefig(p, dpi=120); plt.close(fig); return p
+
+
 def plot_roc(cache, iov, plotdir):
     edges = cache['disc_edges']
     pt_edges = cache['pt_edges']
@@ -304,9 +391,7 @@ def plot_vs_pt(result, key, ylabel, fname, iov, plotdir, logy=False, target_line
 def plot_mistag_vs_msd(output, result, iov, plotdir, wp='medium'):
     """Decorrelation cross-check: mis-tag vs mSD at a fixed (pT-integrated) WP."""
     hms = output['score_vs_msd']
-    meta = dict(output.get('datasets_metadata', {}))
-    for ds in meta:
-        meta[ds]['_sumw'] = float(output['sumw'].get(ds, 0.0))
+    meta = metadata_with_sumw(output)
     _, bkg_ds = classify_datasets(meta)
     lumi_pb = output.get('run_info', {}).get('lumi_pb')
     scales = {ds: dataset_scale(ds, meta, lumi_pb) for ds in meta}
@@ -358,6 +443,8 @@ def main():
     ap.add_argument('--iov', default='2024')
     ap.add_argument('--json', default=None)
     ap.add_argument('--plotdir', default=None)
+    ap.add_argument('--data-infile', default=None,
+                    help='optional data-only .coffea output for Data/MC TopvsQCD plots')
     ap.add_argument('--score-rebin', type=int, default=DEFAULT_SCORE_REBIN,
                     help='merge this many fine TopvsQCD bins in score_distributions.png only')
     args = ap.parse_args()
@@ -368,6 +455,7 @@ def main():
     os.makedirs(plotdir, exist_ok=True)
 
     output = util.load(args.infile)
+    data_output = _load_data_output(args.data_infile)
     lumi_pb = output.get('run_info', {}).get('lumi_pb')
 
     result, cache, _ = derive(output, args.iov, lumi_pb)
@@ -383,6 +471,13 @@ def main():
 
     plots = [
         plot_score_dists(cache, args.iov, plotdir, score_rebin=args.score_rebin),
+        plot_data_mc_score_dists(
+            output,
+            data_output,
+            args.iov,
+            plotdir,
+            score_rebin=args.score_rebin,
+        ),
         plot_roc(cache, args.iov, plotdir),
         plot_vs_pt(result, 'threshold', 'TopvsQCD threshold', 'wp_threshold_vs_pt.png',
                    args.iov, plotdir),
@@ -393,7 +488,8 @@ def main():
         plot_mistag_vs_msd(output, result, args.iov, plotdir),
     ]
     for p in plots:
-        print(f"wrote {p}")
+        if p is not None:
+            print(f"wrote {p}")
 
     # console summary table
     print("\nDerived working points (threshold | signal eff) per pT bin:")

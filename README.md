@@ -131,7 +131,7 @@ On LPC, the runner uses the full 2024 `data/nanoAOD/QCD.json` and
 starts an `LPCCondorCluster`:
 
 ```bash
-coffea-dask/bin/python run_toptag_wp.py \
+python run_toptag_wp.py \
   --env lpc \
   --out outputs/toptag_wp_2024_full.coffea
 ```
@@ -139,7 +139,7 @@ coffea-dask/bin/python run_toptag_wp.py \
 On coffea.casa, the same manifests are read through `root://xcache/`:
 
 ```bash
-coffea-dask/bin/python run_toptag_wp.py \
+python run_toptag_wp.py \
   --env casa \
   --out outputs/toptag_wp_2024_full.coffea
 ```
@@ -148,17 +148,26 @@ For LPC/casa smoke tests, use `--test` to run two files per manifest dataset and
 one chunk per dataset:
 
 ```bash
-coffea-dask/bin/python run_toptag_wp.py \
+python run_toptag_wp.py \
   --env lpc --test \
   --out outputs/toptag_wp_2024_lpc_smoke.coffea
 ```
 
-After the Coffea output is written, derive the JSON thresholds and validation
-plots:
+Run data separately when you only want the discriminator data/MC shape check:
 
 ```bash
-MPLCONFIGDIR=/tmp/mplconfig coffea-dask/bin/python plot_toptag_wp.py \
+python run_toptag_wp.py \
+  --env lpc --sample Data \
+  --out outputs/toptag_score_data_2024.coffea
+```
+
+After the Coffea output is written, derive the JSON thresholds and validation
+plots. Add `--data-infile` to produce `data_mc_score_distributions.png`:
+
+```bash
+MPLCONFIGDIR=/tmp/mplconfig python plot_toptag_wp.py \
   outputs/toptag_wp_2024_full.coffea \
+  --data-infile outputs/toptag_score_data_2024.coffea \
   --iov 2024 \
   --json data/toptag/toptag_wp_2024.json \
   --plotdir plots/images/toptag_wp/2024 \

@@ -43,8 +43,9 @@ No ntuples are produced — histograms only.
   ```
   Directory names starting with `TT` are treated as signal (gen-matched tops);
   everything else is background (QCD).
-- LPC and coffea.casa runs read `data/nanoAOD/QCD.json` and
-  `data/nanoAOD/TTbar.json` by default. LPC uses
+- LPC and coffea.casa MC runs read `data/nanoAOD/QCD.json` and
+  `data/nanoAOD/TTbar.json` by default. Data-only runs use
+  `data/nanoAOD/data.json`. LPC uses
   `root://cmsxrootd.fnal.gov/`; coffea.casa uses `root://xcache/`.
 
 ## Run it
@@ -86,10 +87,19 @@ No ntuples are produced — histograms only.
        --out outputs/toptag_wp_2024_lpc_smoke.coffea
    ```
 
-6. **Derive WPs and make plots:**
+6. **Data-only run for the TopvsQCD data/MC comparison:**
+   ```bash
+   python run_toptag_wp.py \
+       --env lpc --sample Data \
+       --out outputs/toptag_score_data_2024.coffea
+   ```
+   Use `--test` here as well for a two-files-per-era smoke test.
+
+7. **Derive WPs and make plots, including Data/MC score shapes if data exists:**
    ```bash
    MPLCONFIGDIR=/tmp/mplconfig python plot_toptag_wp.py \
        outputs/toptag_wp_2024_full.coffea \
+       --data-infile outputs/toptag_score_data_2024.coffea \
        --iov 2024 \
        --json data/toptag/toptag_wp_2024.json \
        --plotdir plots/images/toptag_wp/2024 \
@@ -107,6 +117,9 @@ No ntuples are produced — histograms only.
   provenance.
 - Plots in `plots/images/toptag_wp/<iov>/`:
   - `score_distributions.png` — signal vs background `TopvsQCD`, per pT bin.
+  - `data_mc_score_distributions.png` — shape-normalized data vs inclusive MC
+    `TopvsQCD`, per pT bin, when `--data-infile` is supplied or data is present
+    in the input accumulator.
   - `roc.png` — signal eff vs mis-tag, log-x, target points marked.
   - `wp_threshold_vs_pt.png` — derived thresholds vs pT (the parametrization).
   - `signal_eff_vs_pt.png` — signal eff at each WP vs pT.

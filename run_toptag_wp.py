@@ -16,14 +16,19 @@ Full local run over files under ``--rootdir``::
     coffea-dask/bin/python run_toptag_wp.py --env local --workers 4 \
         --out outputs/toptag_wp_2024.coffea
 
-Full LPC Dask run over the 2024 manifest files via XRootD::
+Full LPC Dask run over the 2024 MC manifest files via XRootD::
 
-    coffea-dask/bin/python run_toptag_wp.py --env lpc \
+    python run_toptag_wp.py --env lpc \
         --out outputs/toptag_wp_2024_full.coffea
+
+Data-only LPC run for the TopvsQCD data/MC shape comparison::
+
+    python run_toptag_wp.py --env lpc --sample Data \
+        --out outputs/toptag_score_data_2024.coffea
 
 Coffea-casa smoke test over 1-2 files per dataset::
 
-    coffea-dask/bin/python run_toptag_wp.py --env casa --test \
+    python run_toptag_wp.py --env casa --test \
         --out outputs/toptag_wp_2024_casa_smoke.coffea
 
 The local layout expected under ``--rootdir``
@@ -84,12 +89,14 @@ def _redirect(files, redirector):
 def _dataset_name(sample, section):
     if sample == 'QCD':
         return section
+    if sample == 'Data':
+        return f'Data_{section}' if section else 'Data'
     if section and section != 'inclusive':
         return f'{sample}_{section}'
     return sample
 
 
-def _load_manifest(path, iov, sample, redirector=None, maxfiles=None):
+def _load_manifest(path, iov, sample, redirector=None, maxfiles=None, is_mc=True):
     with open(path) as f:
         manifest = json.load(f)
     if iov not in manifest:
@@ -111,7 +118,7 @@ def _load_manifest(path, iov, sample, redirector=None, maxfiles=None):
         metadata.setdefault('sample', sample)
         metadata.setdefault('subsample', section)
         metadata.setdefault('year', iov)
-        metadata.setdefault('is_mc', True)
+        metadata.setdefault('is_mc', is_mc)
         fileset[_dataset_name(sample, section)] = {
             'files': files,
             'metadata': metadata,
@@ -120,36 +127,58 @@ def _load_manifest(path, iov, sample, redirector=None, maxfiles=None):
 
 
 def build_manifest_fileset(qcd_json, ttbar_json, iov, redirector=None, maxfiles=None,
-                           samples=None):
+                           samples=None, data_json='data/nanoAOD/data.json'):
     samples = set(samples or ['QCD', 'TTbar'])
     fileset = {}
     if 'QCD' in samples:
-        fileset.update(_load_manifest(qcd_json, iov, 'QCD', redirector, maxfiles))
+        fileset.update(_load_manifest(qcd_json, iov, 'QCD', redirector, maxfiles, is_mc=True))
     if 'TTbar' in samples:
-        fileset.update(_load_manifest(ttbar_json, iov, 'TTbar', redirector, maxfiles))
+        fileset.update(_load_manifest(ttbar_json, iov, 'TTbar', redirector, maxfiles, is_mc=True))
+    if 'Data' in samples:
+        fileset.update(_load_manifest(data_json, iov, 'Data', redirector, maxfiles, is_mc=False))
     return fileset
 
 
-def build_local_fileset(rootdir, iov, maxfiles=None):
+def build_local_fileset(rootdir, iov, maxfiles=None, samples=None):
+    samples = set(samples or ['QCD', 'TTbar'])
     fileset = {}
-    pattern = os.path.join(rootdir, iov, 'mc', '*')
-    for sampledir in sorted(glob.glob(pattern)):
-        if not os.path.isdir(sampledir):
-            continue
-        sample = os.path.basename(sampledir)
-        files = _limit_files(sorted(glob.glob(os.path.join(sampledir, '*.root'))), maxfiles)
-        if not files:
-            continue
-        fileset[sample] = {
-            'files': files,
-            'metadata': {
-                'sample': sample,
-                'subsample': sample,
-                'year': iov,
-                'is_mc': True,
-                'xsec_pb': XSEC_PB.get(sample),
-            },
-        }
+    if samples & {'QCD', 'TTbar'}:
+        pattern = os.path.join(rootdir, iov, 'mc', '*')
+        for sampledir in sorted(glob.glob(pattern)):
+            if not os.path.isdir(sampledir):
+                continue
+            sample = os.path.basename(sampledir)
+            files = _limit_files(sorted(glob.glob(os.path.join(sampledir, '*.root'))), maxfiles)
+            if not files:
+                continue
+            fileset[sample] = {
+                'files': files,
+                'metadata': {
+                    'sample': sample,
+                    'subsample': sample,
+                    'year': iov,
+                    'is_mc': True,
+                    'xsec_pb': XSEC_PB.get(sample),
+                },
+            }
+    if 'Data' in samples:
+        pattern = os.path.join(rootdir, iov, 'data', '*')
+        for sampledir in sorted(glob.glob(pattern)):
+            if not os.path.isdir(sampledir):
+                continue
+            section = os.path.basename(sampledir)
+            files = _limit_files(sorted(glob.glob(os.path.join(sampledir, '*.root'))), maxfiles)
+            if not files:
+                continue
+            fileset[f'Data_{section}'] = {
+                'files': files,
+                'metadata': {
+                    'sample': 'Data',
+                    'subsample': section,
+                    'year': iov,
+                    'is_mc': False,
+                },
+            }
     return fileset
 
 
@@ -229,8 +258,9 @@ def main():
     ap.add_argument('--rootdir', default=os.path.expanduser('~/Projects/rootfiles/ttbar'))
     ap.add_argument('--qcd-json', default='data/nanoAOD/QCD.json')
     ap.add_argument('--ttbar-json', default='data/nanoAOD/TTbar.json')
-    ap.add_argument('--sample', choices=['QCD', 'TTbar'], action='append', default=[],
-                    help='sample group(s) to run from manifests; default is QCD and TTbar')
+    ap.add_argument('--data-json', default='data/nanoAOD/data.json')
+    ap.add_argument('--sample', choices=['QCD', 'TTbar', 'Data'], action='append', default=[],
+                    help='sample group(s) to run; default is QCD and TTbar')
     ap.add_argument('-r', '--redirector', default=None,
                     help='redirector for manifest /store paths; env default if omitted')
     ap.add_argument('--out', default=None, help='output .coffea path')
@@ -266,7 +296,12 @@ def main():
         input_mode = 'local' if args.env == 'local' else 'manifest'
 
     if input_mode == 'local':
-        fileset = build_local_fileset(args.rootdir, args.iov, maxfiles=args.maxfiles)
+        fileset = build_local_fileset(
+            args.rootdir,
+            args.iov,
+            maxfiles=args.maxfiles,
+            samples=args.sample or ['QCD', 'TTbar'],
+        )
         input_label = f'local:{args.rootdir}'
     else:
         redirector = args.redirector or default_redirector(args.env)
@@ -277,6 +312,7 @@ def main():
             redirector=redirector,
             maxfiles=args.maxfiles,
             samples=args.sample or ['QCD', 'TTbar'],
+            data_json=args.data_json,
         )
         input_label = f'manifest:{redirector}'
 
