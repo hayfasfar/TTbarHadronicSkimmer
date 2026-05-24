@@ -377,7 +377,10 @@ def main():
     print(f"\nsaved {out}")
     print(f"elapsed {dt:.1f}s, events/s = {metrics['entries']/dt:.0f}")
     for ds in fileset:
-        print(f"  {ds:20s} nevents={output['nevents'][ds]:>10d}  sumw={output['sumw'][ds]:.3e}")
+        raw = output.get('nevents_raw', {}).get(ds, output['nevents'][ds])
+        rejected = output.get('qcd_genweight_rejected', {}).get(ds, 0)
+        print(f"  {ds:20s} nevents={output['nevents'][ds]:>10d}/{raw:<10d}  "
+              f"sumw={output['sumw'][ds]:.3e}  qcd_weight_reject={rejected}")
 
 
 if __name__ == '__main__':

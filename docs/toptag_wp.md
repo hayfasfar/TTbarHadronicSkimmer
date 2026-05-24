@@ -20,6 +20,9 @@ the operational how-to.
   `TTbarResProcessor._tscore`.
 - The WP threshold is defined purely by the **QCD background**; the signal sample
   only supplies the efficiency reported alongside.
+- QCD events with large `genWeight` outliers are rejected with the same
+  two-standard-deviation filter used in `TTbarResProcessor`; the runner prints
+  the kept/raw event counts and the number rejected per dataset.
 
 No ntuples are produced — histograms only.
 

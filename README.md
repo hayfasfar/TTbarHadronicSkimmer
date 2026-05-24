@@ -153,6 +153,10 @@ python run_toptag_wp.py \
   --out outputs/toptag_wp_2024_lpc_smoke.coffea
 ```
 
+For QCD, the top-tag runner applies the same large-`genWeight` outlier rejection
+used by `TTbarResProcessor` before filling histograms, and prints kept/raw event
+counts plus the rejected count per dataset.
+
 Run data separately when you want the discriminator Data/MC check:
 
 ```bash

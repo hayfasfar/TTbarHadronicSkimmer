@@ -19,7 +19,10 @@ Outputs (keys in the accumulator dict):
   - ``score_vs_msd`` : Hist[dataset, jettype, msd, disc] WITHOUT the mass window.
                        Used for the mass-decorrelation cross-check.
   - ``sumw``         : defaultdict(float), sum of genWeight per dataset.
-  - ``nevents``      : defaultdict(int),   processed events per dataset.
+  - ``nevents``      : defaultdict(int),   events kept after preprocessing.
+  - ``nevents_raw``  : defaultdict(int),   input events before preprocessing.
+  - ``qcd_genweight_rejected`` : defaultdict(int), QCD events removed by the
+                       large-genWeight filter mirrored from ``TTbarResProcessor``.
 
 ``jettype`` is ``"incl"`` (all preselected jets) or ``"matched"`` (AK8 matched
 to a gen hadronic top, filled only for signal/TTbar samples). The background
@@ -89,6 +92,20 @@ JET_ETA_MAX = 2.5
 
 # gen-top match radius.
 DR_MATCH = 0.8
+
+
+def _qcd_genweight_mask(gen_weight, nsigma=2.0):
+    """Mirror TTbarResProcessor's QCD large-genWeight event rejection."""
+    vals = ak.to_numpy(gen_weight)
+    if len(vals) == 0:
+        return ak.ones_like(gen_weight, dtype=bool)
+
+    average = np.average(vals)
+    stddev = np.std(vals)
+    if stddev == 0 or not np.isfinite(stddev):
+        return ak.ones_like(gen_weight, dtype=bool)
+
+    return np.abs((gen_weight - average) / stddev) < nsigma
 
 
 def _make_score_hist():
@@ -167,7 +184,16 @@ class TopTagWPProcessor(processor.ProcessorABC):
             'score_vs_msd': _make_score_vs_msd_hist(),
             'sumw': processor.defaultdict_accumulator(float),
             'nevents': processor.defaultdict_accumulator(int),
+            'nevents_raw': processor.defaultdict_accumulator(int),
+            'qcd_genweight_rejected': processor.defaultdict_accumulator(int),
         }
+
+        n_raw = len(events)
+        n_rejected = 0
+        if 'QCD' in dataset and 'genWeight' in events.fields:
+            genweight_mask = _qcd_genweight_mask(events.genWeight)
+            n_rejected = n_raw - int(ak.sum(genweight_mask))
+            events = events[genweight_mask]
 
         fj = events.FatJet
         missing = [f for f in cfg['required_fields'] if f not in fj.fields]
@@ -185,6 +211,8 @@ class TopTagWPProcessor(processor.ProcessorABC):
 
         output['sumw'][dataset] += float(ak.sum(w_evt))
         output['nevents'][dataset] += int(len(events))
+        output['nevents_raw'][dataset] += int(n_raw)
+        output['qcd_genweight_rejected'][dataset] += int(n_rejected)
 
         disc = cfg['score'](fj)
         pt = fj.pt
