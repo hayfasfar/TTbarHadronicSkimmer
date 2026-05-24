@@ -332,8 +332,6 @@ def main():
     try:
         if use_dask:
             client, cluster = start_dask_client(args, os.getcwd())
-            print('Waiting for at least one Dask worker...')
-            client.wait_for_workers(1)
             runner = processor.Runner(
                 metadata_cache={},
                 executor=processor.DaskExecutor(client=client, retries=2, treereduction=20),
