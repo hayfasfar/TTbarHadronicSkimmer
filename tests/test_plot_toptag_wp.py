@@ -19,20 +19,15 @@ class TopTagPlotClassificationTest(unittest.TestCase):
         self.assertEqual(bkg, ["QCD_PT-600to800"])
         self.assertEqual(plot_toptag_wp.classify_data_datasets(meta), ["Data_C"])
 
-    def test_qcd_scale_matches_data_minus_ttbar(self):
-        scale = plot_toptag_wp.qcd_scale_to_data_minus_ttbar(
+    def test_mc_shape_scale_matches_data_integral(self):
+        scale = plot_toptag_wp.mc_shape_scale_to_data(
             data_total=100.0,
-            ttbar_total=15.0,
-            qcd_total=50.0,
+            mc_total=80.0,
         )
 
-        self.assertAlmostEqual(scale, 1.7)
+        self.assertAlmostEqual(scale, 1.25)
         self.assertEqual(
-            plot_toptag_wp.qcd_scale_to_data_minus_ttbar(10.0, 15.0, 50.0),
-            0.0,
-        )
-        self.assertEqual(
-            plot_toptag_wp.qcd_scale_to_data_minus_ttbar(10.0, 1.0, 0.0),
+            plot_toptag_wp.mc_shape_scale_to_data(10.0, 0.0),
             0.0,
         )
 

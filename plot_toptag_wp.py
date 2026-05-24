@@ -166,11 +166,11 @@ def rebin_counts(counts, edges, factor):
     return np.asarray(rebinned), np.asarray(rebinned_edges)
 
 
-def qcd_scale_to_data_minus_ttbar(data_total, ttbar_total, qcd_total):
-    """Per-panel QCD scale for Data/MC score plots."""
-    if qcd_total <= 0:
+def mc_shape_scale_to_data(data_total, mc_total):
+    """Per-panel scale for Data/MC shape comparisons."""
+    if mc_total <= 0:
         return 0.0
-    return max(data_total - ttbar_total, 0.0) / qcd_total
+    return data_total / mc_total
 
 
 def data_mc_ratio(data_counts, data_variance, mc_counts):
@@ -301,7 +301,7 @@ def _load_data_output(data_infile):
 
 def plot_data_mc_score_dists(mc_output, data_output, iov, plotdir,
                              score_rebin=DEFAULT_SCORE_REBIN):
-    """TopvsQCD Data/MC plot with stacked MC and per-panel QCD normalization."""
+    """TopvsQCD Data/MC shape plot with stacked MC scaled per pT bin."""
     if data_output is None:
         data_output = mc_output
 
@@ -361,13 +361,14 @@ def plot_data_mc_score_dists(mc_output, data_output, iov, plotdir,
                 ttbar_plot = np.zeros_like(data_plot)
                 ttbar_var = np.zeros_like(data_plot)
 
-            qcd_scale = qcd_scale_to_data_minus_ttbar(
+            mc_shape_scale = mc_shape_scale_to_data(
                 data_plot.sum(),
-                ttbar_plot.sum(),
-                qcd_plot.sum(),
+                qcd_plot.sum() + ttbar_plot.sum(),
             )
-            qcd_plot = qcd_plot * qcd_scale
-            qcd_var = qcd_var * (qcd_scale ** 2)
+            qcd_plot = qcd_plot * mc_shape_scale
+            qcd_var = qcd_var * (mc_shape_scale ** 2)
+            ttbar_plot = ttbar_plot * mc_shape_scale
+            ttbar_var = ttbar_var * (mc_shape_scale ** 2)
             bottom = np.zeros_like(qcd_plot)
             ax.bar(
                 plot_edges[:-1],
@@ -375,7 +376,7 @@ def plot_data_mc_score_dists(mc_output, data_output, iov, plotdir,
                 width=widths,
                 align='edge',
                 bottom=bottom,
-                label=f'QCD (scaled {qcd_scale:.2g})',
+                label='QCD',
                 color='C3',
                 alpha=0.65,
                 linewidth=0,
@@ -392,6 +393,7 @@ def plot_data_mc_score_dists(mc_output, data_output, iov, plotdir,
                 alpha=0.65,
                 linewidth=0,
             )
+            ax.plot([], [], ' ', label=f'MC shape scale {mc_shape_scale:.2g}')
 
             mc_total = qcd_plot + ttbar_plot
             mc_var = qcd_var + ttbar_var
