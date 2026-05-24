@@ -120,7 +120,9 @@ No ntuples are produced — histograms only.
   - `data_mc_score_distributions.png` — data points over stacked QCD+TTbar
     `TopvsQCD`, per pT bin, when `--data-infile` is supplied or data is present
     in the input accumulator. TTbar uses its nominal MC normalization; QCD is
-    scaled in each pT panel to `Data - TTbar`.
+    scaled in each pT panel to `Data - TTbar`. The hatched band shows the MC
+    statistical uncertainty, with a `Data/MC` ratio panel below each score
+    distribution.
   - `roc.png` — signal eff vs mis-tag, log-x, target points marked.
   - `wp_threshold_vs_pt.png` — derived thresholds vs pT (the parametrization).
   - `signal_eff_vs_pt.png` — signal eff at each WP vs pT.

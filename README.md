@@ -163,7 +163,9 @@ python run_toptag_wp.py \
 
 After the Coffea output is written, derive the JSON thresholds and validation
 plots. Add `--data-infile` to produce `data_mc_score_distributions.png`, where
-TTbar is nominally normalized and QCD is scaled per pT panel to `Data - TTbar`:
+TTbar is nominally normalized and QCD is scaled per pT panel to `Data - TTbar`.
+The plot includes a hatched MC statistical uncertainty band and a `Data/MC`
+ratio panel under each pT bin:
 
 ```bash
 MPLCONFIGDIR=/tmp/mplconfig python plot_toptag_wp.py \

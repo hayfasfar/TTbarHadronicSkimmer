@@ -1,5 +1,7 @@
 import unittest
 
+import numpy as np
+
 import plot_toptag_wp
 
 
@@ -33,6 +35,19 @@ class TopTagPlotClassificationTest(unittest.TestCase):
             plot_toptag_wp.qcd_scale_to_data_minus_ttbar(10.0, 1.0, 0.0),
             0.0,
         )
+
+    def test_data_mc_ratio_skips_empty_mc_bins(self):
+        ratio, ratio_err = plot_toptag_wp.data_mc_ratio(
+            data_counts=np.array([10.0, 4.0, 2.0]),
+            data_variance=np.array([10.0, 4.0, 2.0]),
+            mc_counts=np.array([5.0, 0.0, 4.0]),
+        )
+
+        self.assertAlmostEqual(ratio[0], 2.0)
+        self.assertAlmostEqual(ratio_err[0], np.sqrt(10.0) / 5.0)
+        self.assertTrue(np.isnan(ratio[1]))
+        self.assertTrue(np.isnan(ratio_err[1]))
+        self.assertAlmostEqual(ratio[2], 0.5)
 
 
 if __name__ == "__main__":

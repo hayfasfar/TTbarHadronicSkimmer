@@ -54,6 +54,7 @@ TARGET_ORDER = ['very_tight', 'tight', 'medium', 'loose', 'very_loose']
 # that labels, ticks, legends, and the CMS header do not dominate the plot.
 SINGLE_PANEL_FIGSIZE = (10, 8)
 SCORE_PANEL_SIZE = (6.7, 5.2)
+DATAMC_PANEL_SIZE = (6.7, 6.4)
 DEFAULT_SCORE_REBIN = 10
 
 
@@ -170,6 +171,16 @@ def qcd_scale_to_data_minus_ttbar(data_total, ttbar_total, qcd_total):
     if qcd_total <= 0:
         return 0.0
     return max(data_total - ttbar_total, 0.0) / qcd_total
+
+
+def data_mc_ratio(data_counts, data_variance, mc_counts):
+    """Return Data/MC ratio and data statistical uncertainty."""
+    ratio = np.full_like(data_counts, np.nan, dtype=float)
+    ratio_err = np.full_like(data_counts, np.nan, dtype=float)
+    mask = mc_counts > 0
+    ratio[mask] = data_counts[mask] / mc_counts[mask]
+    ratio_err[mask] = np.sqrt(data_variance[mask]) / mc_counts[mask]
+    return ratio, ratio_err
 
 
 # ---------------------------------------------------------------------------
@@ -311,19 +322,24 @@ def plot_data_mc_score_dists(mc_output, data_output, iov, plotdir,
     n = hmc.axes['pt'].size
     ncol = 3
     nrow = int(np.ceil(n / ncol))
-    fig, axes = plt.subplots(
-        nrow,
-        ncol,
-        figsize=(SCORE_PANEL_SIZE[0] * ncol, SCORE_PANEL_SIZE[1] * nrow),
-        squeeze=False,
-    )
+    fig = plt.figure(figsize=(DATAMC_PANEL_SIZE[0] * ncol, DATAMC_PANEL_SIZE[1] * nrow))
+    outer = fig.add_gridspec(nrow, ncol, hspace=0.40, wspace=0.42)
     for i in range(nrow * ncol):
-        ax = axes[i // ncol][i % ncol]
+        inner = outer[i // ncol, i % ncol].subgridspec(
+            2,
+            1,
+            height_ratios=(3.0, 1.0),
+            hspace=0.05,
+        )
+        ax = fig.add_subplot(inner[0])
+        rax = fig.add_subplot(inner[1], sharex=ax)
         if i >= n:
-            ax.axis('off'); continue
+            ax.axis('off')
+            rax.axis('off')
+            continue
 
-        qcd_c, _ = combine_disc(hmc, qcd_ds, 'incl', i, mc_scales)
-        ttbar_c, _ = combine_disc(hmc, ttbar_ds, 'incl', i, mc_scales)
+        qcd_c, qcd_v = combine_disc(hmc, qcd_ds, 'incl', i, mc_scales)
+        ttbar_c, ttbar_v = combine_disc(hmc, ttbar_ds, 'incl', i, mc_scales)
         data_c, data_v = combine_disc(hdata, data_ds, 'incl', i, data_scales)
 
         if data_c is not None and data_c.sum() > 0:
@@ -334,12 +350,16 @@ def plot_data_mc_score_dists(mc_output, data_output, iov, plotdir,
 
             if qcd_c is not None and qcd_c.sum() > 0:
                 qcd_plot, _ = rebin_counts(qcd_c, edges, score_rebin)
+                qcd_var, _ = rebin_counts(qcd_v, edges, score_rebin)
             else:
                 qcd_plot = np.zeros_like(data_plot)
+                qcd_var = np.zeros_like(data_plot)
             if ttbar_c is not None and ttbar_c.sum() > 0:
                 ttbar_plot, _ = rebin_counts(ttbar_c, edges, score_rebin)
+                ttbar_var, _ = rebin_counts(ttbar_v, edges, score_rebin)
             else:
                 ttbar_plot = np.zeros_like(data_plot)
+                ttbar_var = np.zeros_like(data_plot)
 
             qcd_scale = qcd_scale_to_data_minus_ttbar(
                 data_plot.sum(),
@@ -347,6 +367,7 @@ def plot_data_mc_score_dists(mc_output, data_output, iov, plotdir,
                 qcd_plot.sum(),
             )
             qcd_plot = qcd_plot * qcd_scale
+            qcd_var = qcd_var * (qcd_scale ** 2)
             bottom = np.zeros_like(qcd_plot)
             ax.bar(
                 plot_edges[:-1],
@@ -372,16 +393,63 @@ def plot_data_mc_score_dists(mc_output, data_output, iov, plotdir,
                 linewidth=0,
             )
 
+            mc_total = qcd_plot + ttbar_plot
+            mc_var = qcd_var + ttbar_var
+            mc_err = np.sqrt(mc_var)
+            band_bottom = np.maximum(mc_total - mc_err, 0.0)
+            band_top = mc_total + mc_err
+            ax.bar(
+                plot_edges[:-1],
+                band_top - band_bottom,
+                width=widths,
+                align='edge',
+                bottom=band_bottom,
+                label='MC stat. unc.',
+                facecolor='none',
+                edgecolor='0.35',
+                hatch='////',
+                linewidth=0,
+            )
+
             yerr = np.sqrt(data_var)
             ax.errorbar(centers, data_plot, yerr=yerr, fmt='o', ms=3, lw=1,
                         label='Data', color='black')
 
-        ax.set_yscale('log')
-        ax.set_xlabel('TopvsQCD'); ax.set_ylabel('Events / bin')
-        ax.set_title(f'{pt_edges[i]:.0f} < pT < {pt_edges[i+1]:.0f} GeV', fontsize=11)
-        ax.legend(fontsize=9)
+            ratio, ratio_err = data_mc_ratio(data_plot, data_var, mc_total)
+            rel_mc = np.full_like(mc_total, np.nan, dtype=float)
+            mc_mask = mc_total > 0
+            rel_mc[mc_mask] = mc_err[mc_mask] / mc_total[mc_mask]
+            ratio_band_bottom = np.maximum(1.0 - rel_mc, 0.0)
+            ratio_band_top = 1.0 + rel_mc
+            finite_band = np.isfinite(ratio_band_bottom) & np.isfinite(ratio_band_top)
+            if np.any(finite_band):
+                rax.bar(
+                    plot_edges[:-1][finite_band],
+                    (ratio_band_top - ratio_band_bottom)[finite_band],
+                    width=widths[finite_band],
+                    align='edge',
+                    bottom=ratio_band_bottom[finite_band],
+                    facecolor='none',
+                    edgecolor='0.35',
+                    hatch='////',
+                    linewidth=0,
+                )
+            rax.errorbar(centers, ratio, yerr=ratio_err, fmt='o', ms=3, lw=1,
+                         color='black')
 
-    fig.tight_layout()
+        ax.set_yscale('log')
+        ax.set_ylabel('Events / bin', fontsize=18, labelpad=4)
+        ax.set_title(f'{pt_edges[i]:.0f} < pT < {pt_edges[i+1]:.0f} GeV', fontsize=12)
+        ax.tick_params(labelsize=14)
+        ax.legend(fontsize=9)
+        plt.setp(ax.get_xticklabels(), visible=False)
+        rax.axhline(1.0, color='0.35', lw=1, ls='--')
+        rax.set_xlabel('TopvsQCD', fontsize=20, labelpad=2)
+        rax.set_ylabel('Data/MC', fontsize=16, labelpad=3)
+        rax.tick_params(labelsize=14)
+        rax.set_ylim(0.0, 2.0)
+        rax.grid(axis='y', color='0.85', lw=0.7)
+
     p = os.path.join(plotdir, 'data_mc_score_distributions.png')
     fig.savefig(p, dpi=120); plt.close(fig); return p
 
