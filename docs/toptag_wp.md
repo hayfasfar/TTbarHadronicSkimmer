@@ -128,6 +128,9 @@ No ntuples are produced — histograms only.
     QCD/TTbar relative composition is preserved. The hatched band shows the MC
     statistical uncertainty, with a `Data/MC` ratio panel below each score
     distribution.
+  - `pt_distributions.png` — preselected AK8 pT control distribution, with
+    stacked QCD+TTbar and an optional Data/MC ratio when `--data-infile` is
+    supplied. Use it to check whether the QCD spectrum and stitching are smooth.
   - `roc.png` — signal eff vs mis-tag, log-x, target points marked.
   - `wp_threshold_vs_pt.png` — derived thresholds vs pT (the parametrization).
   - `signal_eff_vs_pt.png` — signal eff at each WP vs pT.

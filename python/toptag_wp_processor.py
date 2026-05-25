@@ -20,6 +20,8 @@ Outputs (keys in the accumulator dict):
                        Used for Data/MC score-shape checks including sidebands.
   - ``score_vs_msd`` : Hist[dataset, jettype, msd, disc] WITHOUT the mass window.
                        Used for the mass-decorrelation cross-check.
+  - ``jet_pt``       : Hist[dataset, jettype, pt] for preselected AK8 jets.
+                       Used as a QCD stitching / smoothness control plot.
   - ``sumw``         : defaultdict(float), sum of genWeight per dataset.
   - ``nevents``      : defaultdict(int),   events kept after preprocessing.
   - ``nevents_raw``  : defaultdict(int),   input events before preprocessing.
@@ -84,6 +86,13 @@ PT_BIN_EDGES = [400.0, 500.0, 600.0, 800.0, 1200.0, 3000.0]
 # tail used to invert for a target mis-tag rate is smooth.
 N_DISC_BINS = 1000
 
+# Fine-but-readable pT control bins. Keep the threshold/stitching-sensitive
+# region reasonably granular, then open up the sparse high-pT tail.
+PT_CONTROL_EDGES = np.concatenate([
+    np.arange(400.0, 1200.0, 20.0),
+    np.arange(1200.0, 3000.0 + 100.0, 100.0),
+])
+
 # Mass window (GeV) applied when deriving WPs (kept, per analysis convention).
 MSD_MIN = 105.0
 MSD_MAX = 210.0
@@ -131,6 +140,16 @@ def _make_score_vs_msd_hist():
         hist.axis.StrCategory([], name="jettype", growth=True),
         hist.axis.Regular(60, 0.0, 300.0, name="msd", label=r"$m_{SD}$ [GeV]"),
         hist.axis.Regular(200, 0.0, 1.0, name="disc", label="TopvsQCD"),
+        storage="weight",
+        name="Counts",
+    )
+
+
+def _make_jet_pt_hist():
+    return hist.Hist(
+        hist.axis.StrCategory([], name="dataset", growth=True),
+        hist.axis.StrCategory([], name="jettype", growth=True),
+        hist.axis.Variable(PT_CONTROL_EDGES, name="pt", label=r"AK8 $p_T$ [GeV]"),
         storage="weight",
         name="Counts",
     )
@@ -189,6 +208,7 @@ class TopTagWPProcessor(processor.ProcessorABC):
             'score': _make_score_hist(),
             'score_full_msd': _make_score_full_msd_hist(),
             'score_vs_msd': _make_score_vs_msd_hist(),
+            'jet_pt': _make_jet_pt_hist(),
             'sumw': processor.defaultdict_accumulator(float),
             'nevents': processor.defaultdict_accumulator(int),
             'nevents_raw': processor.defaultdict_accumulator(int),
@@ -238,10 +258,19 @@ class TopTagWPProcessor(processor.ProcessorABC):
             kw = {name: ak.to_numpy(ak.flatten(arr[mask])) for name, arr in extra_axes.items()}
             h.fill(dataset=dataset, jettype=jettype, disc=sel_disc, weight=sel_w, **kw)
 
+        def _fill_pt(h, jettype, mask):
+            h.fill(
+                dataset=dataset,
+                jettype=jettype,
+                pt=ak.to_numpy(ak.flatten(pt[mask])),
+                weight=ak.to_numpy(ak.flatten(w_jet[mask])),
+            )
+
         # inclusive (background mis-tag denominator/numerator)
         _fill(output['score'], 'incl', window, {'pt': pt})
         _fill(output['score_full_msd'], 'incl', presel, {'pt': pt})
         _fill(output['score_vs_msd'], 'incl', presel, {'msd': msd})
+        _fill_pt(output['jet_pt'], 'incl', presel)
 
         # gen-matched tops (signal efficiency) — only for signal/TTbar samples
         if self._should_match(dataset) and 'GenPart' in events.fields:
@@ -249,6 +278,7 @@ class TopTagWPProcessor(processor.ProcessorABC):
             _fill(output['score'], 'matched', window & is_matched, {'pt': pt})
             _fill(output['score_full_msd'], 'matched', presel & is_matched, {'pt': pt})
             _fill(output['score_vs_msd'], 'matched', presel & is_matched, {'msd': msd})
+            _fill_pt(output['jet_pt'], 'matched', presel & is_matched)
 
         return output
 

@@ -21,6 +21,12 @@ class TopTagWPProcessorWeightFilterTest(unittest.TestCase):
 
         self.assertEqual(ak.to_list(mask), [True, True, True])
 
+    def test_jet_pt_hist_uses_fine_control_bins(self):
+        hpt = toptag_wp_processor._make_jet_pt_hist()
+
+        self.assertIn("pt", [axis.name for axis in hpt.axes])
+        self.assertGreater(hpt.axes["pt"].size, len(toptag_wp_processor.PT_BIN_EDGES) - 1)
+
 
 if __name__ == "__main__":
     unittest.main()

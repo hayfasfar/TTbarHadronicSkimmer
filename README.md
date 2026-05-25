@@ -185,7 +185,9 @@ MPLCONFIGDIR=/tmp/mplconfig python plot_toptag_wp.py \
 ```
 
 `--score-rebin` only rebins `score_distributions.png` for readability; the
-working-point derivation still uses the fine score histogram.
+working-point derivation still uses the fine score histogram. The plotter also
+writes `pt_distributions.png`, a preselected AK8 pT control plot for checking
+whether the QCD spectrum and stitching are smooth.
 
 ## Output
 

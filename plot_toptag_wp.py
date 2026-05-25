@@ -118,6 +118,19 @@ def combine_disc(hscore, datasets, jettype, pt_index, scales):
     return val, var
 
 
+def combine_1d(histo, datasets, jettype, scales):
+    """Sum a 1D weighted hist over datasets for one jettype."""
+    val = var = None
+    for ds in datasets:
+        view = histo[{'dataset': ds, 'jettype': jettype}].view(flow=False)
+        s = scales.get(ds, 1.0)
+        v = view['value'] * s
+        e = view['variance'] * (s ** 2)
+        val = v if val is None else val + v
+        var = e if var is None else var + e
+    return val, var
+
+
 def tail_fraction(counts, edges):
     """Return (frac_at_edges, edges): fraction of weight with disc >= each edge."""
     total = counts.sum()
@@ -461,6 +474,122 @@ def plot_data_mc_score_dists(mc_output, data_output, iov, plotdir,
     fig.savefig(p, dpi=120); plt.close(fig); return p
 
 
+def plot_pt_dists(mc_output, data_output, iov, plotdir):
+    """Preselected AK8 pT control plot for QCD stitching / smoothness checks."""
+    if 'jet_pt' not in mc_output:
+        return None
+    if data_output is not None and 'jet_pt' not in data_output:
+        data_output = None
+
+    hmc = mc_output['jet_pt']
+    mc_meta = metadata_with_sumw(mc_output)
+    data_meta = metadata_with_sumw(data_output) if data_output is not None else {}
+    ttbar_ds, qcd_ds = classify_datasets(mc_meta)
+    data_ds = classify_data_datasets(data_meta)
+    if not qcd_ds and not ttbar_ds:
+        return None
+
+    lumi_pb = mc_output.get('run_info', {}).get('lumi_pb')
+    mc_scales = {ds: dataset_scale(ds, mc_meta, lumi_pb) for ds in mc_meta}
+    data_scales = {ds: 1.0 for ds in data_meta}
+    edges = hmc.axes['pt'].edges
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    widths = np.diff(edges)
+
+    qcd_plot, qcd_var = combine_1d(hmc, qcd_ds, 'incl', mc_scales)
+    ttbar_plot, ttbar_var = combine_1d(hmc, ttbar_ds, 'incl', mc_scales)
+    if qcd_plot is None:
+        qcd_plot = np.zeros(len(edges) - 1)
+        qcd_var = np.zeros_like(qcd_plot)
+    if ttbar_plot is None:
+        ttbar_plot = np.zeros(len(edges) - 1)
+        ttbar_var = np.zeros_like(ttbar_plot)
+
+    data_plot = data_var = None
+    mc_shape_scale = None
+    if data_output is not None and data_ds:
+        data_plot, data_var = combine_1d(data_output['jet_pt'], data_ds, 'incl', data_scales)
+        if data_plot is not None and data_plot.sum() > 0:
+            mc_shape_scale = mc_shape_scale_to_data(
+                data_plot.sum(),
+                qcd_plot.sum() + ttbar_plot.sum(),
+            )
+            qcd_plot = qcd_plot * mc_shape_scale
+            qcd_var = qcd_var * (mc_shape_scale ** 2)
+            ttbar_plot = ttbar_plot * mc_shape_scale
+            ttbar_var = ttbar_var * (mc_shape_scale ** 2)
+        else:
+            data_plot = data_var = None
+
+    has_data = data_plot is not None
+    if has_data:
+        fig = plt.figure(figsize=(10, 8))
+        gs = fig.add_gridspec(2, 1, height_ratios=(3.0, 1.0), hspace=0.05)
+        ax = fig.add_subplot(gs[0])
+        rax = fig.add_subplot(gs[1], sharex=ax)
+    else:
+        fig, ax = plt.subplots(figsize=SINGLE_PANEL_FIGSIZE)
+        rax = None
+
+    bottom = np.zeros_like(qcd_plot)
+    ax.bar(edges[:-1], qcd_plot, width=widths, align='edge', bottom=bottom,
+           label='QCD', color='C3', alpha=0.65, linewidth=0)
+    bottom = bottom + qcd_plot
+    ax.bar(edges[:-1], ttbar_plot, width=widths, align='edge', bottom=bottom,
+           label='TTbar', color='C0', alpha=0.65, linewidth=0)
+
+    mc_total = qcd_plot + ttbar_plot
+    mc_var = qcd_var + ttbar_var
+    mc_err = np.sqrt(mc_var)
+    band_bottom = np.maximum(mc_total - mc_err, 0.0)
+    band_top = mc_total + mc_err
+    ax.bar(edges[:-1], band_top - band_bottom, width=widths, align='edge',
+           bottom=band_bottom, label='MC stat. unc.', facecolor='none',
+           edgecolor='0.35', hatch='////', linewidth=0)
+
+    if has_data:
+        ax.plot([], [], ' ', label=f'MC shape scale {mc_shape_scale:.2g}')
+        ax.errorbar(centers, data_plot, yerr=np.sqrt(data_var), fmt='o',
+                    ms=3, lw=1, label='Data', color='black')
+        ratio, ratio_err = data_mc_ratio(data_plot, data_var, mc_total)
+        rel_mc = np.full_like(mc_total, np.nan, dtype=float)
+        mc_mask = mc_total > 0
+        rel_mc[mc_mask] = mc_err[mc_mask] / mc_total[mc_mask]
+        ratio_band_bottom = np.maximum(1.0 - rel_mc, 0.0)
+        ratio_band_top = 1.0 + rel_mc
+        finite_band = np.isfinite(ratio_band_bottom) & np.isfinite(ratio_band_top)
+        if np.any(finite_band):
+            rax.bar(
+                edges[:-1][finite_band],
+                (ratio_band_top - ratio_band_bottom)[finite_band],
+                width=widths[finite_band],
+                align='edge',
+                bottom=ratio_band_bottom[finite_band],
+                facecolor='none',
+                edgecolor='0.35',
+                hatch='////',
+                linewidth=0,
+            )
+        rax.errorbar(centers, ratio, yerr=ratio_err, fmt='o', ms=3, lw=1,
+                     color='black')
+        rax.axhline(1.0, color='0.35', lw=1, ls='--')
+        rax.set_ylabel('Data/MC')
+        rax.set_xlabel('AK8 pT [GeV]')
+        rax.set_ylim(0.0, 2.0)
+        rax.grid(axis='y', color='0.85', lw=0.7)
+        plt.setp(ax.get_xticklabels(), visible=False)
+    else:
+        ax.set_xlabel('AK8 pT [GeV]')
+
+    ax.set_yscale('log')
+    ax.set_ylabel('Events / bin')
+    ax.legend(fontsize=9)
+    _cms(ax, iov)
+    fig.tight_layout()
+    p = os.path.join(plotdir, 'pt_distributions.png')
+    fig.savefig(p, dpi=120); plt.close(fig); return p
+
+
 def plot_roc(cache, iov, plotdir):
     edges = cache['disc_edges']
     pt_edges = cache['pt_edges']
@@ -596,6 +725,7 @@ def main():
             plotdir,
             score_rebin=args.score_rebin,
         ),
+        plot_pt_dists(output, data_output, args.iov, plotdir),
         plot_roc(cache, args.iov, plotdir),
         plot_vs_pt(result, 'threshold', 'TopvsQCD threshold', 'wp_threshold_vs_pt.png',
                    args.iov, plotdir),
