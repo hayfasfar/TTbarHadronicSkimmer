@@ -128,7 +128,9 @@ coffea-dask/bin/python run_toptag_wp.py \
 
 On LPC, the runner uses the full 2024 `data/nanoAOD/QCD.json` and
 `data/nanoAOD/TTbar.json` manifests through `root://cmsxrootd.fnal.gov/` and
-starts an `LPCCondorCluster`:
+starts an `LPCCondorCluster`. QCD generated-pT bins below `QCD_PT-300to470` are
+excluded because their huge cross sections can populate the selected AK8
+`pT > 400` tail with very large normalized weights:
 
 ```bash
 python run_toptag_wp.py \

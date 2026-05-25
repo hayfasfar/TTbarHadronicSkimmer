@@ -29,6 +29,16 @@ class TopTagRunnerFilesetTest(unittest.TestCase):
             data_json = tmpdir / "data.json"
             qcd_json.write_text(json.dumps({
                 "2024": {
+                    "QCD_PT-170to300": {
+                        "files": ["/store/qcd/low.root"],
+                        "metadata": {
+                            "sample": "QCD",
+                            "subsample": "QCD_PT-170to300",
+                            "year": "2024",
+                            "is_mc": True,
+                            "xsec_pb": 113300.0,
+                        },
+                    },
                     "QCD_PT-600to800": {
                         "files": ["/store/qcd/a.root", "/store/qcd/b.root", "/store/qcd/c.root"],
                         "metadata": {
@@ -75,6 +85,24 @@ class TopTagRunnerFilesetTest(unittest.TestCase):
             "root://cmsxrootd.fnal.gov//store/qcd/a.root"
         ])
         self.assertEqual(fileset["TTbar"]["metadata"]["xsec_pb"], 350.6)
+
+    def test_local_fileset_skips_low_qcd_pt_bins(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rootdir = Path(tmp)
+            low_dir = rootdir / "2024" / "mc" / "QCD_PT-170to300"
+            high_dir = rootdir / "2024" / "mc" / "QCD_PT-300to470"
+            low_dir.mkdir(parents=True)
+            high_dir.mkdir(parents=True)
+            (low_dir / "low.root").touch()
+            (high_dir / "high.root").touch()
+
+            fileset = run_toptag_wp.build_local_fileset(
+                rootdir,
+                "2024",
+                samples=["QCD"],
+            )
+
+        self.assertEqual(set(fileset), {"QCD_PT-300to470"})
 
     def test_manifest_fileset_can_run_data_only(self):
         with tempfile.TemporaryDirectory() as tmp:

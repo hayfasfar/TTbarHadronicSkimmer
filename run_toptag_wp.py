@@ -47,6 +47,8 @@ import glob
 import time
 import argparse
 import json
+import logging
+import re
 
 sys.path.append(os.path.join(os.getcwd(), 'python'))
 
@@ -68,6 +70,43 @@ LUMI_PB = {
     '2023': 27000.0,
     '2024': 112700.0,
 }
+
+QCD_MIN_SUBSAMPLE_PT = 300.0
+QCD_SUBSAMPLE_RE = re.compile(r'QCD_(?:Bin-)?PT-?(\d+(?:\.\d+)?)to')
+
+
+def qcd_subsample_min_pt(name):
+    match = QCD_SUBSAMPLE_RE.search(str(name))
+    return float(match.group(1)) if match else None
+
+
+def keep_qcd_subsample(sample, section, metadata=None, min_pt=QCD_MIN_SUBSAMPLE_PT):
+    """Keep QCD generated-pT bins starting at ``min_pt`` GeV."""
+    if sample != 'QCD':
+        return True
+    metadata = metadata or {}
+    subsample = metadata.get('subsample', section)
+    low = qcd_subsample_min_pt(subsample)
+    return low is None or low >= min_pt
+
+
+def quiet_dask_worker_logs():
+    """Suppress Dask worker connection chatter that corrupts progress output."""
+    try:
+        import dask
+
+        dask.config.set({'logging.distributed': 'error'})
+    except Exception:
+        pass
+
+    for name in [
+        'distributed',
+        'distributed.scheduler',
+        'distributed.core',
+        'distributed.nanny',
+        'distributed.worker',
+    ]:
+        logging.getLogger(name).setLevel(logging.ERROR)
 
 
 def _limit_files(files, maxfiles=None):
@@ -119,6 +158,9 @@ def _load_manifest(path, iov, sample, redirector=None, maxfiles=None, is_mc=True
         metadata.setdefault('subsample', section)
         metadata.setdefault('year', iov)
         metadata.setdefault('is_mc', is_mc)
+        if not keep_qcd_subsample(sample, section, metadata):
+            continue
+
         fileset[_dataset_name(sample, section)] = {
             'files': files,
             'metadata': metadata,
@@ -148,6 +190,8 @@ def build_local_fileset(rootdir, iov, maxfiles=None, samples=None):
             if not os.path.isdir(sampledir):
                 continue
             sample = os.path.basename(sampledir)
+            if not keep_qcd_subsample('QCD', sample, {'subsample': sample}):
+                continue
             files = _limit_files(sorted(glob.glob(os.path.join(sampledir, '*.root'))), maxfiles)
             if not files:
                 continue
@@ -331,6 +375,7 @@ def main():
     client = cluster = None
     try:
         if use_dask:
+            quiet_dask_worker_logs()
             client, cluster = start_dask_client(args, os.getcwd())
             runner = processor.Runner(
                 metadata_cache={},

@@ -50,6 +50,10 @@ No ntuples are produced — histograms only.
   `data/nanoAOD/TTbar.json` by default. Data-only runs use
   `data/nanoAOD/data.json`. LPC uses
   `root://cmsxrootd.fnal.gov/`; coffea.casa uses `root://xcache/`.
+- QCD generated-pT bins below `QCD_PT-300to470` are skipped in the runner and
+  ignored by the plotter for older outputs. The lower bins have enormous cross
+  sections and can populate the selected AK8 `pT > 400` tail with very large
+  normalized weights.
 
 ## Run it
 

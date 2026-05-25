@@ -27,6 +27,7 @@ Usage::
 import os
 import json
 import argparse
+import re
 
 import numpy as np
 import matplotlib
@@ -56,6 +57,8 @@ SINGLE_PANEL_FIGSIZE = (10, 8)
 SCORE_PANEL_SIZE = (6.7, 5.2)
 DATAMC_PANEL_SIZE = (6.7, 6.4)
 DEFAULT_SCORE_REBIN = 10
+QCD_MIN_SUBSAMPLE_PT = 300.0
+QCD_SUBSAMPLE_RE = re.compile(r'QCD_(?:Bin-)?PT-?(\d+(?:\.\d+)?)to')
 
 
 # ---------------------------------------------------------------------------
@@ -65,11 +68,29 @@ def _is_data_metadata(m):
     return (not m.get('is_mc', True)) or str(m.get('sample', '')).lower() in {'data', 'jetmet'}
 
 
+def qcd_subsample_min_pt(name):
+    match = QCD_SUBSAMPLE_RE.search(str(name))
+    return float(match.group(1)) if match else None
+
+
+def keep_qcd_subsample(ds, metadata, min_pt=QCD_MIN_SUBSAMPLE_PT):
+    """Keep QCD generated-pT bins starting at ``min_pt`` GeV."""
+    sample = str(metadata.get('sample', ds)).upper()
+    if not sample.startswith('QCD') and 'QCD' not in str(ds).upper():
+        return True
+
+    subsample = metadata.get('subsample', ds)
+    low = qcd_subsample_min_pt(subsample)
+    return low is None or low >= min_pt
+
+
 def classify_datasets(meta):
     """Return (signal_datasets, background_datasets) from datasets_metadata."""
     sig, bkg = [], []
     for ds, m in meta.items():
         if _is_data_metadata(m):
+            continue
+        if not keep_qcd_subsample(ds, m):
             continue
         if str(m.get('sample', ds)).upper().startswith('TT'):
             sig.append(ds)
@@ -85,7 +106,10 @@ def classify_data_datasets(meta):
 
 def classify_mc_datasets(meta):
     """Return MC datasets used for inclusive Data/MC score comparisons."""
-    return [ds for ds, m in meta.items() if not _is_data_metadata(m)]
+    return [
+        ds for ds, m in meta.items()
+        if not _is_data_metadata(m) and keep_qcd_subsample(ds, m)
+    ]
 
 
 def metadata_with_sumw(output):

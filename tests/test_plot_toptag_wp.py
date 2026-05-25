@@ -19,6 +19,16 @@ class TopTagPlotClassificationTest(unittest.TestCase):
         self.assertEqual(bkg, ["QCD_PT-600to800"])
         self.assertEqual(plot_toptag_wp.classify_data_datasets(meta), ["Data_C"])
 
+    def test_low_qcd_pt_bins_are_not_wp_background(self):
+        meta = {
+            "QCD_PT-170to300": {"sample": "QCD", "subsample": "QCD_PT-170to300", "is_mc": True},
+            "QCD_PT-300to470": {"sample": "QCD", "subsample": "QCD_PT-300to470", "is_mc": True},
+        }
+
+        _, bkg = plot_toptag_wp.classify_datasets(meta)
+
+        self.assertEqual(bkg, ["QCD_PT-300to470"])
+
     def test_mc_shape_scale_matches_data_integral(self):
         scale = plot_toptag_wp.mc_shape_scale_to_data(
             data_total=100.0,
