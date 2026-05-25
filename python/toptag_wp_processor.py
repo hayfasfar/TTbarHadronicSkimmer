@@ -16,6 +16,8 @@ hard-coded ``'2024'`` in the logic.
 Outputs (keys in the accumulator dict):
   - ``score``        : Hist[dataset, jettype, pt, disc] inside the mass window.
                        Used to derive pT-binned WP thresholds and signal eff.
+  - ``score_full_msd`` : Hist[dataset, jettype, pt, disc] without the mass window.
+                       Used for Data/MC score-shape checks including sidebands.
   - ``score_vs_msd`` : Hist[dataset, jettype, msd, disc] WITHOUT the mass window.
                        Used for the mass-decorrelation cross-check.
   - ``sumw``         : defaultdict(float), sum of genWeight per dataset.
@@ -119,6 +121,10 @@ def _make_score_hist():
     )
 
 
+def _make_score_full_msd_hist():
+    return _make_score_hist()
+
+
 def _make_score_vs_msd_hist():
     return hist.Hist(
         hist.axis.StrCategory([], name="dataset", growth=True),
@@ -181,6 +187,7 @@ class TopTagWPProcessor(processor.ProcessorABC):
 
         output = {
             'score': _make_score_hist(),
+            'score_full_msd': _make_score_full_msd_hist(),
             'score_vs_msd': _make_score_vs_msd_hist(),
             'sumw': processor.defaultdict_accumulator(float),
             'nevents': processor.defaultdict_accumulator(int),
@@ -233,12 +240,14 @@ class TopTagWPProcessor(processor.ProcessorABC):
 
         # inclusive (background mis-tag denominator/numerator)
         _fill(output['score'], 'incl', window, {'pt': pt})
+        _fill(output['score_full_msd'], 'incl', presel, {'pt': pt})
         _fill(output['score_vs_msd'], 'incl', presel, {'msd': msd})
 
         # gen-matched tops (signal efficiency) — only for signal/TTbar samples
         if self._should_match(dataset) and 'GenPart' in events.fields:
             is_matched = self._matched_to_gen_top(events)
             _fill(output['score'], 'matched', window & is_matched, {'pt': pt})
+            _fill(output['score_full_msd'], 'matched', presel & is_matched, {'pt': pt})
             _fill(output['score_vs_msd'], 'matched', presel & is_matched, {'msd': msd})
 
         return output

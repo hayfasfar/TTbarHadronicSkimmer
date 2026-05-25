@@ -168,7 +168,9 @@ python run_toptag_wp.py \
 After the Coffea output is written, derive the JSON thresholds and validation
 plots. Add `--data-infile` to produce `data_mc_score_distributions.png`, where
 the stacked QCD+TTbar MC is scaled to the data integral in each pT panel for a
-shape comparison.
+shape comparison. This Data/MC plot uses the full preselected `mSD` range, so
+the 2D alphabet sidebands are included; the WP derivation itself still uses the
+`105 < mSD < 210` top-mass window.
 The plot includes a hatched MC statistical uncertainty band and a `Data/MC`
 ratio panel under each pT bin:
 

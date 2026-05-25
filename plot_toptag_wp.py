@@ -299,14 +299,19 @@ def _load_data_output(data_infile):
     return util.load(data_infile)
 
 
+def data_mc_score_hist(output):
+    """Score hist for Data/MC shape plots; prefer full mSD sidebands."""
+    return output.get('score_full_msd', output['score'])
+
+
 def plot_data_mc_score_dists(mc_output, data_output, iov, plotdir,
                              score_rebin=DEFAULT_SCORE_REBIN):
     """TopvsQCD Data/MC shape plot with stacked MC scaled per pT bin."""
     if data_output is None:
         data_output = mc_output
 
-    hmc = mc_output['score']
-    hdata = data_output['score']
+    hmc = data_mc_score_hist(mc_output)
+    hdata = data_mc_score_hist(data_output)
     mc_meta = metadata_with_sumw(mc_output)
     data_meta = metadata_with_sumw(data_output)
     ttbar_ds, qcd_ds = classify_datasets(mc_meta)

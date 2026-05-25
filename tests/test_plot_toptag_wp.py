@@ -44,6 +44,12 @@ class TopTagPlotClassificationTest(unittest.TestCase):
         self.assertTrue(np.isnan(ratio_err[1]))
         self.assertAlmostEqual(ratio[2], 0.5)
 
+    def test_data_mc_score_hist_prefers_full_msd_hist(self):
+        output = {"score": "window", "score_full_msd": "full"}
+
+        self.assertEqual(plot_toptag_wp.data_mc_score_hist(output), "full")
+        self.assertEqual(plot_toptag_wp.data_mc_score_hist({"score": "window"}), "window")
+
 
 if __name__ == "__main__":
     unittest.main()
