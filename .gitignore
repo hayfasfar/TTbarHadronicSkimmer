@@ -50,6 +50,7 @@ Untitled*.ipynb
 # Ignoring all things not needed for Haifa
 .python-version
 coffea_env/
+coffea-dask/
 
 .last_config.json
 .codex

@@ -33,11 +33,9 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-try:
-    import mplhep as hep
-    plt.style.use(hep.style.CMS)
-except Exception:
-    hep = None
+import mplhep as hep
+
+plt.style.use(hep.style.CMS)
 
 from coffea import util
 
@@ -220,6 +218,49 @@ def data_mc_ratio(data_counts, data_variance, mc_counts):
     return ratio, ratio_err
 
 
+def plot_mc_stack(ax, edges, qcd_counts, ttbar_counts):
+    hep.histplot(
+        [qcd_counts, ttbar_counts],
+        edges,
+        stack=True,
+        histtype='fill',
+        label=['QCD', 'TTbar'],
+        color=['C3', 'C0'],
+        alpha=0.65,
+        ax=ax,
+    )
+
+
+def plot_uncertainty_band(ax, edges, central, err, label=None):
+    bottom = np.maximum(central - err, 0.0)
+    top = central + err
+    yerr = np.vstack([central - bottom, top - central])
+    hep.histplot(
+        central,
+        edges,
+        yerr=yerr,
+        histtype='band',
+        label=label,
+        facecolor='none',
+        edgecolor='0.35',
+        hatch='////',
+        ax=ax,
+    )
+
+
+def plot_error_points(ax, edges, counts, err, label=None):
+    hep.histplot(
+        counts,
+        edges,
+        yerr=err,
+        histtype='errorbar',
+        label=label,
+        color='black',
+        markersize=3,
+        ax=ax,
+    )
+
+
 # ---------------------------------------------------------------------------
 # derivation
 # ---------------------------------------------------------------------------
@@ -294,8 +335,7 @@ def derive(output, iov, lumi_pb):
 # plots
 # ---------------------------------------------------------------------------
 def _cms(ax, iov):
-    if hep is not None:
-        hep.cms.label("Preliminary", data=False, year=iov, ax=ax, fontsize=14)
+    hep.cms.label("Preliminary", data=False, year=iov, ax=ax, fontsize=14)
 
 
 def plot_score_dists(cache, iov, plotdir, score_rebin=DEFAULT_SCORE_REBIN):
@@ -387,8 +427,6 @@ def plot_data_mc_score_dists(mc_output, data_output, iov, plotdir,
         if data_c is not None and data_c.sum() > 0:
             data_plot, plot_edges = rebin_counts(data_c, edges, score_rebin)
             data_var, _ = rebin_counts(data_v, edges, score_rebin)
-            centers = 0.5 * (plot_edges[:-1] + plot_edges[1:])
-            widths = np.diff(plot_edges)
 
             if qcd_c is not None and qcd_c.sum() > 0:
                 qcd_plot, _ = rebin_counts(qcd_c, edges, score_rebin)
@@ -411,75 +449,23 @@ def plot_data_mc_score_dists(mc_output, data_output, iov, plotdir,
             qcd_var = qcd_var * (mc_shape_scale ** 2)
             ttbar_plot = ttbar_plot * mc_shape_scale
             ttbar_var = ttbar_var * (mc_shape_scale ** 2)
-            bottom = np.zeros_like(qcd_plot)
-            ax.bar(
-                plot_edges[:-1],
-                qcd_plot,
-                width=widths,
-                align='edge',
-                bottom=bottom,
-                label='QCD',
-                color='C3',
-                alpha=0.65,
-                linewidth=0,
-            )
-            bottom = bottom + qcd_plot
-            ax.bar(
-                plot_edges[:-1],
-                ttbar_plot,
-                width=widths,
-                align='edge',
-                bottom=bottom,
-                label='TTbar',
-                color='C0',
-                alpha=0.65,
-                linewidth=0,
-            )
+            plot_mc_stack(ax, plot_edges, qcd_plot, ttbar_plot)
             ax.plot([], [], ' ', label=f'MC shape scale {mc_shape_scale:.2g}')
 
             mc_total = qcd_plot + ttbar_plot
             mc_var = qcd_var + ttbar_var
             mc_err = np.sqrt(mc_var)
-            band_bottom = np.maximum(mc_total - mc_err, 0.0)
-            band_top = mc_total + mc_err
-            ax.bar(
-                plot_edges[:-1],
-                band_top - band_bottom,
-                width=widths,
-                align='edge',
-                bottom=band_bottom,
-                label='MC stat. unc.',
-                facecolor='none',
-                edgecolor='0.35',
-                hatch='////',
-                linewidth=0,
-            )
-
-            yerr = np.sqrt(data_var)
-            ax.errorbar(centers, data_plot, yerr=yerr, fmt='o', ms=3, lw=1,
-                        label='Data', color='black')
+            plot_uncertainty_band(ax, plot_edges, mc_total, mc_err,
+                                  label='MC stat. unc.')
+            plot_error_points(ax, plot_edges, data_plot, np.sqrt(data_var),
+                              label='Data')
 
             ratio, ratio_err = data_mc_ratio(data_plot, data_var, mc_total)
             rel_mc = np.full_like(mc_total, np.nan, dtype=float)
             mc_mask = mc_total > 0
             rel_mc[mc_mask] = mc_err[mc_mask] / mc_total[mc_mask]
-            ratio_band_bottom = np.maximum(1.0 - rel_mc, 0.0)
-            ratio_band_top = 1.0 + rel_mc
-            finite_band = np.isfinite(ratio_band_bottom) & np.isfinite(ratio_band_top)
-            if np.any(finite_band):
-                rax.bar(
-                    plot_edges[:-1][finite_band],
-                    (ratio_band_top - ratio_band_bottom)[finite_band],
-                    width=widths[finite_band],
-                    align='edge',
-                    bottom=ratio_band_bottom[finite_band],
-                    facecolor='none',
-                    edgecolor='0.35',
-                    hatch='////',
-                    linewidth=0,
-                )
-            rax.errorbar(centers, ratio, yerr=ratio_err, fmt='o', ms=3, lw=1,
-                         color='black')
+            plot_uncertainty_band(rax, plot_edges, np.ones_like(mc_total), rel_mc)
+            plot_error_points(rax, plot_edges, ratio, ratio_err)
 
         ax.set_yscale('log')
         ax.set_ylabel('Events / bin', fontsize=18, labelpad=4)
@@ -517,8 +503,6 @@ def plot_pt_dists(mc_output, data_output, iov, plotdir):
     mc_scales = {ds: dataset_scale(ds, mc_meta, lumi_pb) for ds in mc_meta}
     data_scales = {ds: 1.0 for ds in data_meta}
     edges = hmc.axes['pt'].edges
-    centers = 0.5 * (edges[:-1] + edges[1:])
-    widths = np.diff(edges)
 
     qcd_plot, qcd_var = combine_1d(hmc, qcd_ds, 'incl', mc_scales)
     ttbar_plot, ttbar_var = combine_1d(hmc, ttbar_ds, 'incl', mc_scales)
@@ -555,47 +539,22 @@ def plot_pt_dists(mc_output, data_output, iov, plotdir):
         fig, ax = plt.subplots(figsize=SINGLE_PANEL_FIGSIZE)
         rax = None
 
-    bottom = np.zeros_like(qcd_plot)
-    ax.bar(edges[:-1], qcd_plot, width=widths, align='edge', bottom=bottom,
-           label='QCD', color='C3', alpha=0.65, linewidth=0)
-    bottom = bottom + qcd_plot
-    ax.bar(edges[:-1], ttbar_plot, width=widths, align='edge', bottom=bottom,
-           label='TTbar', color='C0', alpha=0.65, linewidth=0)
+    plot_mc_stack(ax, edges, qcd_plot, ttbar_plot)
 
     mc_total = qcd_plot + ttbar_plot
     mc_var = qcd_var + ttbar_var
     mc_err = np.sqrt(mc_var)
-    band_bottom = np.maximum(mc_total - mc_err, 0.0)
-    band_top = mc_total + mc_err
-    ax.bar(edges[:-1], band_top - band_bottom, width=widths, align='edge',
-           bottom=band_bottom, label='MC stat. unc.', facecolor='none',
-           edgecolor='0.35', hatch='////', linewidth=0)
+    plot_uncertainty_band(ax, edges, mc_total, mc_err, label='MC stat. unc.')
 
     if has_data:
         ax.plot([], [], ' ', label=f'MC shape scale {mc_shape_scale:.2g}')
-        ax.errorbar(centers, data_plot, yerr=np.sqrt(data_var), fmt='o',
-                    ms=3, lw=1, label='Data', color='black')
+        plot_error_points(ax, edges, data_plot, np.sqrt(data_var), label='Data')
         ratio, ratio_err = data_mc_ratio(data_plot, data_var, mc_total)
         rel_mc = np.full_like(mc_total, np.nan, dtype=float)
         mc_mask = mc_total > 0
         rel_mc[mc_mask] = mc_err[mc_mask] / mc_total[mc_mask]
-        ratio_band_bottom = np.maximum(1.0 - rel_mc, 0.0)
-        ratio_band_top = 1.0 + rel_mc
-        finite_band = np.isfinite(ratio_band_bottom) & np.isfinite(ratio_band_top)
-        if np.any(finite_band):
-            rax.bar(
-                edges[:-1][finite_band],
-                (ratio_band_top - ratio_band_bottom)[finite_band],
-                width=widths[finite_band],
-                align='edge',
-                bottom=ratio_band_bottom[finite_band],
-                facecolor='none',
-                edgecolor='0.35',
-                hatch='////',
-                linewidth=0,
-            )
-        rax.errorbar(centers, ratio, yerr=ratio_err, fmt='o', ms=3, lw=1,
-                     color='black')
+        plot_uncertainty_band(rax, edges, np.ones_like(mc_total), rel_mc)
+        plot_error_points(rax, edges, ratio, ratio_err)
         rax.axhline(1.0, color='0.35', lw=1, ls='--')
         rax.set_ylabel('Data/MC')
         rax.set_xlabel('AK8 pT [GeV]')
@@ -625,12 +584,24 @@ def plot_roc(cache, iov, plotdir):
         eb = np.append(np.cumsum(bkg[::-1])[::-1] / bkg.sum(), 0.0)
         es = np.append(np.cumsum(sig[::-1])[::-1] / sig.sum(), 0.0)
         ax.plot(eb, es, label=f'{pt_edges[i]:.0f}-{pt_edges[i+1]:.0f} GeV')
-    for tgt in TARGETS.values():
-        ax.axvline(tgt, color='grey', ls=':', lw=0.8)
     ax.set_xscale('log')
     ax.set_xlabel('QCD mis-tag efficiency')
     ax.set_ylabel('Signal (matched top) efficiency')
     ax.set_xlim(1e-4, 1); ax.set_ylim(0, 1)
+    for wp in TARGET_ORDER:
+        tgt = TARGETS[wp]
+        ax.axvline(tgt, color='grey', ls=':', lw=0.8)
+        label = f"{wp.replace('_', ' ')} {tgt * 100:.1f}%"
+        ax.text(
+            tgt,
+            0.03,
+            label,
+            rotation=90,
+            va='bottom',
+            ha='right',
+            fontsize=8,
+            color='0.35',
+        )
     ax.legend(fontsize=9, title='AK8 pT')
     _cms(ax, iov)
     fig.tight_layout()
@@ -657,6 +628,100 @@ def plot_vs_pt(result, key, ylabel, fname, iov, plotdir, logy=False, target_line
     fig.tight_layout()
     p = os.path.join(plotdir, fname)
     fig.savefig(p, dpi=120); plt.close(fig); return p
+
+
+def plot_wp_summary_table(result, iov, plotdir):
+    """Image table summarizing WP thresholds, target mistag, and signal efficiency."""
+    rows = []
+    for wp in TARGET_ORDER:
+        wpd = result['working_points'][wp]
+        target = TARGETS[wp] * 100.0
+        for ptbin, threshold, mistag, sig_eff in zip(
+            wpd['pt_bins'],
+            wpd['threshold'],
+            wpd['mistag_achieved'],
+            wpd['signal_eff'],
+        ):
+            rows.append([
+                wp.replace('_', ' '),
+                f'{target:.1f}%',
+                f'{ptbin[0]:.0f}-{ptbin[1]:.0f}',
+                '---' if threshold is None else f'{threshold:.3f}',
+                '---' if mistag is None else f'{mistag * 100.0:.2f}%',
+                '---' if sig_eff is None else f'{sig_eff * 100.0:.1f}%',
+            ])
+
+    columns = [
+        'WP',
+        'Target\nmistag',
+        'AK8 pT\n[GeV]',
+        'TopvsQCD\nthreshold',
+        'Achieved\nmistag',
+        'Signal eff.',
+    ]
+    fig, ax = plt.subplots(figsize=(12, 8))
+    ax.axis('off')
+    ax.set_title(
+        'Top-tag working point summary',
+        loc='left',
+        fontsize=22,
+        fontweight='bold',
+        pad=16,
+    )
+    ax.text(
+        1.0,
+        1.035,
+        f'{iov} (13 TeV)',
+        transform=ax.transAxes,
+        ha='right',
+        va='bottom',
+        fontsize=14,
+    )
+    ax.text(
+        0.0,
+        0.985,
+        'Thresholds are score cuts. Efficiencies are from MC; they are not data/MC scale factors.',
+        transform=ax.transAxes,
+        ha='left',
+        va='top',
+        fontsize=10,
+        color='0.35',
+    )
+    table = ax.table(
+        cellText=rows,
+        colLabels=columns,
+        loc='center',
+        cellLoc='center',
+        colLoc='center',
+        bbox=[0.0, 0.0, 1.0, 0.92],
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(9)
+    table.scale(1.0, 1.25)
+
+    wp_colors = {
+        'very tight': '#e8f0ff',
+        'tight': '#fff4df',
+        'medium': '#ffe7ea',
+        'loose': '#f0e6f6',
+        'very loose': '#eeeeee',
+    }
+    for (row, col), cell in table.get_celld().items():
+        cell.set_edgecolor('0.75')
+        cell.set_linewidth(0.5)
+        if row == 0:
+            cell.set_facecolor('0.15')
+            cell.set_text_props(color='white', weight='bold')
+        else:
+            cell.set_facecolor(wp_colors.get(rows[row - 1][0], 'white'))
+            if col == 0:
+                cell.set_text_props(weight='bold')
+
+    fig.tight_layout()
+    p = os.path.join(plotdir, 'wp_summary_table.png')
+    fig.savefig(p, dpi=140)
+    plt.close(fig)
+    return p
 
 
 def plot_mistag_vs_msd(output, result, iov, plotdir, wp='medium'):
@@ -757,6 +822,7 @@ def main():
                    args.iov, plotdir),
         plot_vs_pt(result, 'mistag_achieved', 'Achieved QCD mis-tag', 'mistag_closure_vs_pt.png',
                    args.iov, plotdir, logy=True, target_lines=True),
+        plot_wp_summary_table(result, args.iov, plotdir),
         plot_mistag_vs_msd(output, result, args.iov, plotdir),
     ]
     for p in plots:
