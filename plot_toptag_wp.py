@@ -57,6 +57,9 @@ DATAMC_PANEL_SIZE = (6.7, 6.4)
 DEFAULT_SCORE_REBIN = 10
 QCD_MIN_SUBSAMPLE_PT = 300.0
 QCD_SUBSAMPLE_RE = re.compile(r'QCD_(?:Bin-)?PT-?(\d+(?:\.\d+)?)to')
+CMS_ENERGY_LABEL = "13.6 TeV"
+MSD_DECORR_MIN = 20.0
+MSD_DECORR_MAX = 250.0
 
 
 # ---------------------------------------------------------------------------
@@ -295,6 +298,11 @@ def derive(output, iov, lumi_pb):
             'target_mistag': TARGETS[wp],
             'pt_bins': [], 'threshold': [], 'threshold_unc': [],
             'mistag_achieved': [], 'signal_eff': [],
+            'inclusive': {
+                'pt_range': [float(pt_edges[0]), float(pt_edges[-1])],
+                'threshold': None, 'threshold_unc': None,
+                'mistag_achieved': None, 'signal_eff': None,
+            },
         }
 
     for i in range(pt_axis.size):
@@ -328,6 +336,33 @@ def derive(output, iov, lumi_pb):
             wpd['mistag_achieved'].append(round(mistag_ach, 6))
             wpd['signal_eff'].append(round(sig_eff, 5) if sig_eff is not None else None)
 
+    # pT-integrated ("inclusive") WPs over the full pt_min..pt_edges[-1] range.
+    bkg_incl = sum(cache['bkg'])
+    bkg_incl_var = sum(cache['bkg_var'])
+    sig_incl = sum(c for c in cache['sig'] if c is not None)
+    sig_incl = sig_incl if isinstance(sig_incl, np.ndarray) else None
+    if isinstance(bkg_incl, np.ndarray) and bkg_incl.sum() > 0:
+        frac_bkg = tail_fraction(bkg_incl, disc_edges)[0]
+        neff = effective_entries(bkg_incl, bkg_incl_var)
+        for wp in TARGET_ORDER:
+            tgt = TARGETS[wp]
+            wpd = result['working_points'][wp]['inclusive']
+            if neff <= 0:
+                continue
+            t_star = invert_threshold(frac_bkg, disc_edges, tgt)
+            err = np.sqrt(max(tgt * (1 - tgt) / neff, 0.0))
+            t_hi = invert_threshold(frac_bkg, disc_edges, max(tgt - err, 0.0))
+            t_lo = invert_threshold(frac_bkg, disc_edges, min(tgt + err, 1.0))
+            wpd['threshold'] = round(t_star, 5)
+            wpd['threshold_unc'] = round(0.5 * abs(t_hi - t_lo), 5)
+            wpd['mistag_achieved'] = round(
+                eff_at_threshold(bkg_incl, disc_edges, t_star), 6
+            )
+            if sig_incl is not None and sig_incl.sum() > 0:
+                wpd['signal_eff'] = round(
+                    eff_at_threshold(sig_incl, disc_edges, t_star), 5
+                )
+
     return result, cache, (sig_ds, bkg_ds, scales)
 
 
@@ -335,7 +370,13 @@ def derive(output, iov, lumi_pb):
 # plots
 # ---------------------------------------------------------------------------
 def _cms(ax, iov):
-    hep.cms.label("Preliminary", data=False, year=iov, ax=ax, fontsize=14)
+    hep.cms.label(
+        "Preliminary",
+        data=False,
+        rlabel=f"{iov} ({CMS_ENERGY_LABEL})",
+        ax=ax,
+        fontsize=14,
+    )
 
 
 def plot_score_dists(cache, iov, plotdir, score_rebin=DEFAULT_SCORE_REBIN):
@@ -357,10 +398,24 @@ def plot_score_dists(cache, iov, plotdir, score_rebin=DEFAULT_SCORE_REBIN):
         bkg = cache['bkg'][i]; sig = cache['sig'][i]
         if bkg.sum() > 0:
             bkg_plot, plot_edges = rebin_counts(bkg, edges, score_rebin)
-            ax.stairs(bkg_plot / bkg_plot.sum(), plot_edges, label='QCD (bkg)', color='C3')
+            hep.histplot(
+                bkg_plot / bkg_plot.sum(),
+                plot_edges,
+                histtype='step',
+                label='QCD (bkg)',
+                color='C3',
+                ax=ax,
+            )
         if sig is not None and sig.sum() > 0:
             sig_plot, plot_edges = rebin_counts(sig, edges, score_rebin)
-            ax.stairs(sig_plot / sig_plot.sum(), plot_edges, label='TTbar matched (sig)', color='C0')
+            hep.histplot(
+                sig_plot / sig_plot.sum(),
+                plot_edges,
+                histtype='step',
+                label='TTbar matched (sig)',
+                color='C0',
+                ax=ax,
+            )
         ax.set_yscale('log')
         ax.set_xlabel('TopvsQCD'); ax.set_ylabel('a.u.')
         ax.set_title(f'{pt_edges[i]:.0f} < pT < {pt_edges[i+1]:.0f} GeV', fontsize=11)
@@ -724,6 +779,255 @@ def plot_wp_summary_table(result, iov, plotdir):
     return p
 
 
+def _integrated_qcd_thresholds(output):
+    """pT-integrated QCD thresholds for mass-decorrelation display."""
+    hscore = output['score']
+    meta = metadata_with_sumw(output)
+    _, bkg_ds = classify_datasets(meta)
+    lumi_pb = output.get('run_info', {}).get('lumi_pb')
+    scales = {ds: dataset_scale(ds, meta, lumi_pb) for ds in meta}
+
+    disc_edges = hscore.axes['disc'].edges
+    bkg_c = np.zeros(len(disc_edges) - 1)
+    for ds in bkg_ds:
+        try:
+            view = hscore[{'dataset': ds, 'jettype': 'incl'}][{'pt': sum}].view(flow=False)
+        except Exception:
+            continue
+        bkg_c += view['value'] * scales.get(ds, 1.0)
+
+    frac, _ = tail_fraction(bkg_c, disc_edges)
+    thresholds = {
+        wp: invert_threshold(frac, disc_edges, TARGETS[wp])
+        for wp in TARGET_ORDER
+    }
+    return thresholds, bkg_ds, scales
+
+
+def _sum_msd_score(output, datasets, scales):
+    hms = output['score_vs_msd']
+    total = np.zeros((hms.axes['msd'].size, hms.axes['disc'].size))
+    variance = np.zeros_like(total)
+    for ds in datasets:
+        try:
+            view = hms[{'dataset': ds, 'jettype': 'incl'}].view(flow=False)
+        except Exception:
+            continue
+        scale = scales.get(ds, 1.0)
+        total += view['value'] * scale
+        variance += view['variance'] * scale ** 2
+    return total, variance
+
+
+def plot_msd_decorrelation_wp(output, iov, plotdir):
+    """QCD mSD shapes after cumulative TopvsQCD WP cuts."""
+    if 'score_vs_msd' not in output:
+        return None
+
+    thresholds, bkg_ds, scales = _integrated_qcd_thresholds(output)
+    if not bkg_ds:
+        return None
+
+    hms = output['score_vs_msd']
+    msd_edges = hms.axes['msd'].edges
+    disc_edges = hms.axes['disc'].edges
+    disc_centers = 0.5 * (disc_edges[:-1] + disc_edges[1:])
+    h2, h2_var = _sum_msd_score(output, bkg_ds, scales)
+    msd_mask = (msd_edges[:-1] >= MSD_DECORR_MIN) & (msd_edges[1:] <= MSD_DECORR_MAX)
+    plot_edges = msd_edges[np.r_[np.where(msd_mask)[0], np.where(msd_mask)[0][-1] + 1]]
+
+    def normalized(mask):
+        y_all = h2[:, mask].sum(axis=1)
+        v_all = h2_var[:, mask].sum(axis=1)
+        total = y_all[msd_mask].sum()
+        if total <= 0:
+            return y_all[msd_mask], np.sqrt(v_all[msd_mask])
+        return y_all[msd_mask] / total, np.sqrt(v_all[msd_mask]) / total
+
+    inclusive, inclusive_err = normalized(np.ones_like(disc_centers, dtype=bool))
+    curves = [('inclusive', None, inclusive, inclusive_err, '#3366ff')]
+    for wp, color in [
+        ('very_loose', '#ff4a3d'),
+        ('medium', '#2ca02c'),
+        ('tight', '#17becf'),
+        ('very_tight', '#ff7f0e'),
+    ]:
+        y, yerr = normalized(disc_centers >= thresholds[wp])
+        curves.append((wp, thresholds[wp], y, yerr, color))
+
+    fig = plt.figure(figsize=(10.0, 8.4))
+    gs = fig.add_gridspec(2, 1, height_ratios=(3.2, 1.0), hspace=0.04)
+    ax = fig.add_subplot(gs[0])
+    rax = fig.add_subplot(gs[1], sharex=ax)
+
+    for wp, threshold, y, yerr, color in curves:
+        if threshold is None:
+            label = 'inclusive'
+        else:
+            label = f"mistag = {TARGETS[wp]*100:.1f}% (disc > {threshold:.3f})"
+        hep.histplot(y, plot_edges, yerr=yerr, histtype='step', lw=1.5,
+                     color=color, label=label, ax=ax)
+        if threshold is not None:
+            ratio = np.divide(
+                y,
+                inclusive,
+                out=np.full_like(y, np.nan, dtype=float),
+                where=inclusive > 0,
+            )
+            rel_y = np.divide(yerr, y, out=np.zeros_like(y), where=y > 0)
+            rel_inclusive = np.divide(
+                inclusive_err,
+                inclusive,
+                out=np.zeros_like(inclusive),
+                where=inclusive > 0,
+            )
+            ratio_err = ratio * np.sqrt(rel_y ** 2 + rel_inclusive ** 2)
+            hep.histplot(ratio, plot_edges, yerr=ratio_err, histtype='step',
+                         lw=1.5, color=color, ax=rax)
+
+    hep.cms.label(
+        "Preliminary",
+        data=False,
+        rlabel=f"{iov} ({CMS_ENERGY_LABEL})",
+        ax=ax,
+        fontsize=14,
+    )
+    ax.text(0.035, 0.94, 'QCD multijet', transform=ax.transAxes,
+            fontsize=15, weight='bold', va='top')
+    ax.text(0.035, 0.87, 'Top vs QCD', transform=ax.transAxes,
+            fontsize=12, va='top')
+    ax.text(0.035, 0.80, 'Model: GloParTv3', transform=ax.transAxes,
+            fontsize=12, weight='bold', va='top')
+    ax.text(0.035, 0.73, r'$p_{T,j}>400$ GeV, $|\eta_j|<2.5$',
+            transform=ax.transAxes, fontsize=11, va='top')
+
+    ax.set_ylabel('A.U.')
+    ax.set_xlim(MSD_DECORR_MIN, MSD_DECORR_MAX)
+    ax.set_ylim(bottom=0)
+    ax.legend(fontsize=10.5, loc='upper right', frameon=False)
+    plt.setp(ax.get_xticklabels(), visible=False)
+
+    rax.axhline(1.0, color='black', lw=1.0)
+    rax.set_ylabel('ratio')
+    rax.set_xlabel(r'$m_{SD}$ [GeV]')
+    rax.set_ylim(0.5, 1.5)
+    rax.grid(axis='y', color='0.86', lw=0.7)
+
+    fig.subplots_adjust(top=0.90, left=0.12, right=0.98, bottom=0.10)
+    p = os.path.join(plotdir, 'msd_decorrelation_qcd_wp.png')
+    fig.savefig(p, dpi=150)
+    plt.close(fig)
+    return p
+
+
+def plot_msd_decorrelation_wp_intervals(output, iov, plotdir):
+    """QCD mSD shapes in exclusive TopvsQCD intervals between WPs."""
+    if 'score_vs_msd' not in output:
+        return None
+
+    thresholds, bkg_ds, scales = _integrated_qcd_thresholds(output)
+    if not bkg_ds:
+        return None
+
+    hms = output['score_vs_msd']
+    msd_edges = hms.axes['msd'].edges
+    disc_edges = hms.axes['disc'].edges
+    disc_centers = 0.5 * (disc_edges[:-1] + disc_edges[1:])
+    h2, h2_var = _sum_msd_score(output, bkg_ds, scales)
+    msd_mask = (msd_edges[:-1] >= MSD_DECORR_MIN) & (msd_edges[1:] <= MSD_DECORR_MAX)
+    msd_bins = np.where(msd_mask)[0]
+    plot_edges = msd_edges[np.r_[msd_bins, msd_bins[-1] + 1]]
+
+    def normalized(mask):
+        y_all = h2[:, mask].sum(axis=1)
+        v_all = h2_var[:, mask].sum(axis=1)
+        total = y_all[msd_mask].sum()
+        if total <= 0:
+            return y_all[msd_mask], np.sqrt(v_all[msd_mask])
+        return y_all[msd_mask] / total, np.sqrt(v_all[msd_mask]) / total
+
+    inclusive, inclusive_err = normalized(np.ones_like(disc_centers, dtype=bool))
+    interval_specs = [
+        ('very_loose', 'loose', '5.0-2.5%', '#ff4a3d'),
+        ('loose', 'medium', '2.5-1.0%', '#2ca02c'),
+        ('medium', 'tight', '1.0-0.5%', '#17becf'),
+        ('tight', 'very_tight', '0.5-0.1%', '#ff7f0e'),
+    ]
+
+    curves = [('inclusive', None, inclusive, inclusive_err, '#3366ff')]
+    for lo_wp, hi_wp, label, color in interval_specs:
+        lo = thresholds[lo_wp]
+        hi = thresholds[hi_wp]
+        mask = (disc_centers >= lo) & (disc_centers < hi)
+        y, yerr = normalized(mask)
+        curves.append((label, (lo, hi), y, yerr, color))
+
+    fig = plt.figure(figsize=(10.0, 8.4))
+    gs = fig.add_gridspec(2, 1, height_ratios=(3.2, 1.0), hspace=0.04)
+    ax = fig.add_subplot(gs[0])
+    rax = fig.add_subplot(gs[1], sharex=ax)
+
+    for label, bounds, y, yerr, color in curves:
+        if bounds is None:
+            legend_label = 'inclusive'
+        else:
+            lo, hi = bounds
+            legend_label = f'{label} interval ({lo:.3f} < disc < {hi:.3f})'
+        hep.histplot(y, plot_edges, yerr=yerr, histtype='step', lw=1.5,
+                     color=color, label=legend_label, ax=ax)
+        if bounds is not None:
+            ratio = np.divide(
+                y,
+                inclusive,
+                out=np.full_like(y, np.nan, dtype=float),
+                where=inclusive > 0,
+            )
+            rel_y = np.divide(yerr, y, out=np.zeros_like(y), where=y > 0)
+            rel_inclusive = np.divide(
+                inclusive_err,
+                inclusive,
+                out=np.zeros_like(inclusive),
+                where=inclusive > 0,
+            )
+            ratio_err = ratio * np.sqrt(rel_y ** 2 + rel_inclusive ** 2)
+            hep.histplot(ratio, plot_edges, yerr=ratio_err, histtype='step',
+                         lw=1.5, color=color, ax=rax)
+
+    hep.cms.label(
+        "Preliminary",
+        data=False,
+        rlabel=f"{iov} ({CMS_ENERGY_LABEL})",
+        ax=ax,
+        fontsize=14,
+    )
+    ax.text(0.035, 0.94, 'QCD multijet', transform=ax.transAxes,
+            fontsize=15, weight='bold', va='top')
+    ax.text(0.035, 0.87, 'Top vs QCD intervals', transform=ax.transAxes,
+            fontsize=12, va='top')
+    ax.text(0.035, 0.80, 'Model: GloParTv3', transform=ax.transAxes,
+            fontsize=12, weight='bold', va='top')
+    ax.text(0.035, 0.73, r'$p_{T,j}>400$ GeV, $|\eta_j|<2.5$',
+            transform=ax.transAxes, fontsize=11, va='top')
+
+    ax.set_ylabel('A.U.')
+    ax.set_xlim(MSD_DECORR_MIN, MSD_DECORR_MAX)
+    ax.set_ylim(bottom=0)
+    ax.legend(fontsize=9.5, loc='upper right', frameon=False)
+    plt.setp(ax.get_xticklabels(), visible=False)
+
+    rax.axhline(1.0, color='black', lw=1.0)
+    rax.set_ylabel('ratio')
+    rax.set_xlabel(r'$m_{SD}$ [GeV]')
+    rax.set_ylim(0.5, 1.5)
+    rax.grid(axis='y', color='0.86', lw=0.7)
+
+    fig.subplots_adjust(top=0.90, left=0.12, right=0.98, bottom=0.10)
+    p = os.path.join(plotdir, 'msd_decorrelation_qcd_wp_intervals.png')
+    fig.savefig(p, dpi=150)
+    plt.close(fig)
+    return p
+
+
 def plot_mistag_vs_msd(output, result, iov, plotdir, wp='medium'):
     """Decorrelation cross-check: mis-tag vs mSD at a fixed (pT-integrated) WP."""
     hms = output['score_vs_msd']
@@ -757,9 +1061,8 @@ def plot_mistag_vs_msd(output, result, iov, plotdir, wp='medium'):
         numer += h2[:, pass_mask].sum(axis=1) * scale
     with np.errstate(divide='ignore', invalid='ignore'):
         mistag = np.where(denom > 0, numer / denom, np.nan)
-    centers = 0.5 * (msd_edges[:-1] + msd_edges[1:])
     fig, ax = plt.subplots(figsize=SINGLE_PANEL_FIGSIZE)
-    ax.step(centers, mistag, where='mid', color='C3')
+    hep.histplot(mistag, msd_edges, histtype='step', color='C3', ax=ax)
     ax.axhline(TARGETS[wp], color='grey', ls='--', label=f'target {TARGETS[wp]*100:.1f}%')
     ax.axvspan(105, 210, color='C0', alpha=0.1, label='mass window')
     ax.set_xlabel(r'$m_{SD}$ [GeV]'); ax.set_ylabel('QCD mis-tag efficiency')
@@ -823,6 +1126,8 @@ def main():
         plot_vs_pt(result, 'mistag_achieved', 'Achieved QCD mis-tag', 'mistag_closure_vs_pt.png',
                    args.iov, plotdir, logy=True, target_lines=True),
         plot_wp_summary_table(result, args.iov, plotdir),
+        plot_msd_decorrelation_wp(output, args.iov, plotdir),
+        plot_msd_decorrelation_wp_intervals(output, args.iov, plotdir),
         plot_mistag_vs_msd(output, result, args.iov, plotdir),
     ]
     for p in plots:
@@ -844,6 +1149,23 @@ def main():
             else:
                 cells.append(f"{thr:.3f}|{(se if se is not None else float('nan')):.2f}".rjust(16))
         print(f"  {wp:13s}" + "".join(cells))
+
+    print("\nInclusive (pT-integrated) working points:")
+    print(f"  {'WP':13s}{'threshold':>12s}{'± unc':>10s}{'mistag':>12s}{'sig eff':>10s}")
+    for wp in TARGET_ORDER:
+        incl = result['working_points'][wp]['inclusive']
+        thr = incl['threshold']
+        if thr is None:
+            print(f"  {wp:13s}{'—':>12s}")
+            continue
+        unc = incl['threshold_unc']
+        m = incl['mistag_achieved']
+        se = incl['signal_eff']
+        print(
+            f"  {wp:13s}{thr:>12.4f}{unc:>10.4f}"
+            f"{(m if m is not None else float('nan')):>12.4f}"
+            f"{(se if se is not None else float('nan')):>10.3f}"
+        )
 
 
 if __name__ == '__main__':

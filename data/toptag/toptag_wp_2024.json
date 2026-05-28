@@ -73,7 +73,17 @@
         0.47322,
         0.43445,
         0.4
-      ]
+      ],
+      "inclusive": {
+        "pt_range": [
+          400.0,
+          3000.0
+        ],
+        "threshold": 0.98064,
+        "threshold_unc": 0.00139,
+        "mistag_achieved": 0.001,
+        "signal_eff": 0.33349
+      }
     },
     "tight": {
       "target_mistag": 0.005,
@@ -126,7 +136,17 @@
         0.65679,
         0.65839,
         0.4
-      ]
+      ],
+      "inclusive": {
+        "pt_range": [
+          400.0,
+          3000.0
+        ],
+        "threshold": 0.92844,
+        "threshold_unc": 0.00203,
+        "mistag_achieved": 0.005,
+        "signal_eff": 0.53894
+      }
     },
     "medium": {
       "target_mistag": 0.01,
@@ -179,7 +199,17 @@
         0.73077,
         0.74534,
         0.4
-      ]
+      ],
+      "inclusive": {
+        "pt_range": [
+          400.0,
+          3000.0
+        ],
+        "threshold": 0.85713,
+        "threshold_unc": 0.00359,
+        "mistag_achieved": 0.01,
+        "signal_eff": 0.6441
+      }
     },
     "loose": {
       "target_mistag": 0.025,
@@ -232,7 +262,17 @@
         0.84266,
         0.88199,
         0.4
-      ]
+      ],
+      "inclusive": {
+        "pt_range": [
+          400.0,
+          3000.0
+        ],
+        "threshold": 0.64875,
+        "threshold_unc": 0.00545,
+        "mistag_achieved": 0.025,
+        "signal_eff": 0.76727
+      }
     },
     "very_loose": {
       "target_mistag": 0.05,
@@ -285,7 +325,17 @@
         0.9021,
         0.90062,
         0.4
-      ]
+      ],
+      "inclusive": {
+        "pt_range": [
+          400.0,
+          3000.0
+        ],
+        "threshold": 0.3903,
+        "threshold_unc": 0.00438,
+        "mistag_achieved": 0.05,
+        "signal_eff": 0.84963
+      }
     }
   },
   "provenance": {
