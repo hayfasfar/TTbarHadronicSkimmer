@@ -45,6 +45,7 @@ from corrections import (
 from btagCorrections import btagCorrections
 from functions import getRapidity
 from categories import build_analysis_categories
+from cutflow import cutflow_step_metadata
 from jets import Run3JetManager, _AK4_PT_MIN, _AK4_ETA_MAX
 
 
@@ -469,6 +470,34 @@ class TTbarResProcessor(processor.ProcessorABC):
                 scaled_cutflow[key] = float(value) * scale_factor
         return scaled_cutflow
 
+    @staticmethod
+    def _scale_mapping(values, scale_factor, power=1):
+        return {
+            key: float(value) * (scale_factor ** power)
+            for key, value in values.items()
+        }
+
+    @staticmethod
+    def _sum_weight_array(weights, mask=None, square=False):
+        values = ak.to_numpy(weights)
+        if mask is not None:
+            values = values[ak.to_numpy(mask)]
+        if square:
+            values = values ** 2
+        return float(np.sum(values))
+
+    def _fill_cutflow_table_step(self, output, key, mask=None, weights=None, count=None):
+        """Fill the structured cutflow table maps without changing selections."""
+        if count is None:
+            count = int(ak.sum(mask)) if mask is not None else len(weights)
+
+        output['cutflow_unweighted'][key] += float(count)
+        if weights is None:
+            return
+
+        output['cutflow_weighted'][key] += self._sum_weight_array(weights, mask=mask)
+        output['cutflow_weighted2'][key] += self._sum_weight_array(weights, mask=mask, square=True)
+
     @property
     def accumulator(self):
         return self._accumulator
@@ -536,6 +565,7 @@ class TTbarResProcessor(processor.ProcessorABC):
 
         if isNominal:
             output['cutflow']['all events 1'] += nEvents
+            self._fill_cutflow_table_step(output, 'input_events', count=nEvents)
             self.logger.debug(
                 'cutflow all events 1 filled: original_chunk_events=%d, '
                 'events_entering_analysis=%d',
@@ -626,6 +656,9 @@ class TTbarResProcessor(processor.ProcessorABC):
             output['cutflow']['all events'] += len(FatJets)
             output['cutflow']['sumw']        += np.sum(evtweights)
             output['cutflow']['sumw2']       += np.sum(evtweights ** 2)
+            self._fill_cutflow_table_step(
+                output, 'analysis_events', count=len(events), weights=evtweights,
+            )
             self.logger.debug(
                 'cutflow all events filled: events=%d, sumw=%s, sumw2=%s',
                 len(FatJets), np.sum(evtweights), np.sum(evtweights ** 2),
@@ -642,8 +675,12 @@ class TTbarResProcessor(processor.ProcessorABC):
             cuts = []
             for cut in selection.names:
                 cuts.append(cut)
-                n = int(ak.sum(selection.all(*cuts)))
+                cumulative_mask = selection.all(*cuts)
+                n = int(ak.sum(cumulative_mask))
                 output['cutflow'][cut] += n
+                self._fill_cutflow_table_step(
+                    output, cut, mask=cumulative_mask, weights=evtweights,
+                )
                 print(f"[CUTFLOW] after {cut} (cumulative): {n}")
 
         eventCut = selection.all(*selection.names)
@@ -663,6 +700,9 @@ class TTbarResProcessor(processor.ProcessorABC):
 
         if isNominal:
             output['cutflow']['after_eventCut'] += len(events)
+            self._fill_cutflow_table_step(
+                output, 'preselection', count=len(events), weights=evtweights,
+            )
             print(f"[CUTFLOW] after all preselection (eventCut): {len(events)}")
         logger.debug(f"Length of event {len(events)}")
         if len(events) < 10:
@@ -723,6 +763,14 @@ class TTbarResProcessor(processor.ProcessorABC):
         hasSubjets1 = (jet1.subJetIdx1 > -1) & (jet1.subJetIdx2 > -1)
         GoodSubjets = hasSubjets0 & hasSubjets1
         ttbarcandCuts = dPhiCut & GoodSubjets
+
+        if isNominal:
+            self._fill_cutflow_table_step(
+                output, 'dphi', mask=dPhiCut, weights=evtweights,
+            )
+            self._fill_cutflow_table_step(
+                output, 'ttbarcand', mask=ttbarcandCuts, weights=evtweights,
+            )
 
         # save copies before slicing — run/lumi/evt are masked by the signal requirement
         ttag_s0_precut = ttag_s0
@@ -839,9 +887,21 @@ class TTbarResProcessor(processor.ProcessorABC):
             anacats=self.anacats,
         )
         if isNominal:
+            self._fill_cutflow_table_step(
+                output, 'tag_jet0', mask=ttag_s0, weights=evtweights,
+            )
+            self._fill_cutflow_table_step(
+                output, 'tag_2tag', mask=(ttag_s0 & ttag_s1), weights=evtweights,
+            )
+            self._fill_cutflow_table_step(
+                output, 'antitag', mask=antitag, weights=evtweights,
+            )
             print(f"[CUTFLOW] antitag: {int(ak.sum(antitag))}, ttag_s0: {int(ak.sum(ttag_s0))}, "
                   f"ttag_s1: {int(ak.sum(ttag_s1))}, 2tag: {int(ak.sum(ttag_s0 & ttag_s1))}")
             for lbl, cat in labels_and_categories.items():
+                self._fill_cutflow_table_step(
+                    output, f'category_{lbl}', mask=cat, weights=evtweights,
+                )
                 print(f"[CUTFLOW] category '{lbl}': {int(ak.sum(cat))}")
 
         self.weights[correction] = self.weight_manager.build_weights(
@@ -1050,4 +1110,11 @@ class TTbarResProcessor(processor.ProcessorABC):
         accumulator['sample_metadata'] = sample_metadata
         accumulator['normalization'] = normalization
         accumulator['cutflow_scaled'] = self._build_scaled_cutflow(cutflow, scale_factor)
+        accumulator['cutflow_weighted_scaled'] = self._scale_mapping(
+            accumulator.get('cutflow_weighted', {}), scale_factor,
+        )
+        accumulator['cutflow_weighted2_scaled'] = self._scale_mapping(
+            accumulator.get('cutflow_weighted2', {}), scale_factor, power=2,
+        )
+        accumulator['cutflow_table_steps'] = cutflow_step_metadata(self.anacats)
         return accumulator

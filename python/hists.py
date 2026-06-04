@@ -116,6 +116,9 @@ def build_output_histograms(
     output.update(
         {
             "cutflow": processor.defaultdict_accumulator(int),
+            "cutflow_unweighted": processor.defaultdict_accumulator(float),
+            "cutflow_weighted": processor.defaultdict_accumulator(float),
+            "cutflow_weighted2": processor.defaultdict_accumulator(float),
             "weights": processor.defaultdict_accumulator(float),
             "systematics": processor.defaultdict_accumulator(float),
             "event_list": processor.dict_accumulator(

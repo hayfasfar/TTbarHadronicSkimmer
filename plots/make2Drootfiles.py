@@ -56,6 +56,26 @@ def _parse_args() -> argparse.Namespace:
         help="Glob for QCD pT-bin coffea files. Default: QCD_<year>*_PT-*to*_noSyst.coffea.",
     )
     parser.add_argument(
+        "--skip-qcd",
+        action="store_true",
+        help="Do not load QCD or write the QCD ROOT file (data-only output).",
+    )
+    parser.add_argument(
+        "--ttbar-pattern",
+        default=None,
+        help="Glob for TTbar coffea files. Default: TTbar_<year>*.coffea. Empty string disables.",
+    )
+    parser.add_argument(
+        "--signal-pattern",
+        default=None,
+        help="Glob for signal coffea files. Default: ZPrime*_<year>*.coffea. Empty string disables.",
+    )
+    parser.add_argument(
+        "--signal-label",
+        default="signal",
+        help="Label used in the signal output filename (TTbarAllHad<yr>_<label>.root).",
+    )
+    parser.add_argument(
         "--hist",
         default="mtt_vs_mt",
         help="Histogram key to export.",
@@ -186,46 +206,66 @@ def main() -> None:
 
     data_pattern = args.data_pattern or f"data_{args.year}*_noSyst.coffea"
     qcd_pattern = args.qcd_pattern or f"QCD_{args.year}*_PT-*to*_noSyst.coffea"
+    ttbar_pattern = args.ttbar_pattern if args.ttbar_pattern is not None else f"TTbar_{args.year}*.coffea"
+    signal_pattern = args.signal_pattern if args.signal_pattern is not None else f"ZPrime*_{args.year}*.coffea"
+
+    samples: list[tuple[str, list[dict]]] = []
 
     data_paths = _discover_files(coffea_dir, data_pattern, "data")
-    qcd_paths = _discover_files(coffea_dir, qcd_pattern, "QCD pT-bin", sort_qcd=True)
-
     data_outputs = _load_outputs(data_paths, "data", util)
-    qcd_outputs = _load_outputs(qcd_paths, "QCD pT bins", util)
+    samples.append(("Data", data_outputs))
 
-    ref_output = _first_output_with_categories(data_outputs + qcd_outputs)
+    if not args.skip_qcd:
+        qcd_paths = _discover_files(coffea_dir, qcd_pattern, "QCD pT-bin", sort_qcd=True)
+        qcd_outputs = _load_outputs(qcd_paths, "QCD pT bins", util)
+        samples.append(("QCD", qcd_outputs))
+
+    if ttbar_pattern:
+        ttbar_paths = _discover_files(coffea_dir, ttbar_pattern, "TTbar")
+        ttbar_outputs = _load_outputs(ttbar_paths, "TTbar", util)
+        samples.append(("TTbar", ttbar_outputs))
+
+    if signal_pattern:
+        signal_paths = _discover_files(coffea_dir, signal_pattern, "signal")
+        signal_outputs = _load_outputs(signal_paths, "signal", util)
+        samples.append((args.signal_label, signal_outputs))
+
+    all_outputs = [out for _, outs in samples for out in outs]
+    ref_output = _first_output_with_categories(all_outputs)
     label_map = ref_output["analysisCategories"]
     label_to_int = {label: idx for idx, label in label_map.items()}
     print("Analysis categories:", label_map)
 
-    syst_labels = _available_systematics(data_outputs + qcd_outputs, args.hist)
+    syst_labels = _available_systematics(all_outputs, args.hist)
     if not args.include_systs:
         syst_labels = ["nominal"]
     print("Systematics:", ", ".join(syst_labels))
 
     year_label = _year_label(args.year)
     file_prefix = out_dir / f"TTbarAllHad{year_label}_"
-    data_out = file_prefix.with_name(file_prefix.name + f"Data{args.tag}.root")
-    qcd_out = file_prefix.with_name(file_prefix.name + f"QCD{args.tag}.root")
 
-    with uproot.recreate(data_out) as fdata, uproot.recreate(qcd_out) as fqcd:
-        for cat in args.categories:
-            pass_ids = _category_ids(label_to_int, "2t", cat)
-            fail_ids = _category_ids(label_to_int, "at", cat)
-            print(f"{cat}: pass={pass_ids}, fail={fail_ids}")
+    cat_ids = {
+        cat: (_category_ids(label_to_int, "2t", cat), _category_ids(label_to_int, "at", cat))
+        for cat in args.categories
+    }
+    for cat, (pass_ids, fail_ids) in cat_ids.items():
+        print(f"{cat}: pass={pass_ids}, fail={fail_ids}")
 
-            for syst in syst_labels:
-                suffix = _syst_suffix(syst)
-                pass_name = f"MttvsMt{cat}{year_label}Pass{suffix}"
-                fail_name = f"MttvsMt{cat}{year_label}Fail{suffix}"
+    written: list[Path] = []
+    for label, outputs in samples:
+        out_path = file_prefix.with_name(file_prefix.name + f"{label}{args.tag}.root")
+        sample_systs = ["nominal"] if label == "Data" else syst_labels
+        with uproot.recreate(out_path) as fout:
+            for cat, (pass_ids, fail_ids) in cat_ids.items():
+                for syst in sample_systs:
+                    suffix = _syst_suffix(syst)
+                    pass_name = f"MttvsMt{cat}{year_label}Pass{suffix}"
+                    fail_name = f"MttvsMt{cat}{year_label}Fail{suffix}"
+                    fout[pass_name] = _sum_hists(outputs, args.hist, pass_ids, syst)
+                    fout[fail_name] = _sum_hists(outputs, args.hist, fail_ids, syst)
+        written.append(out_path)
+        print(f"Saved {out_path}")
 
-                fdata[pass_name] = _sum_hists(data_outputs, args.hist, pass_ids, syst)
-                fdata[fail_name] = _sum_hists(data_outputs, args.hist, fail_ids, syst)
-                fqcd[pass_name] = _sum_hists(qcd_outputs, args.hist, pass_ids, syst)
-                fqcd[fail_name] = _sum_hists(qcd_outputs, args.hist, fail_ids, syst)
-
-    print(f"Saved {data_out}")
-    print(f"Saved {qcd_out}")
     _print_time(time.time() - tic)
 
 

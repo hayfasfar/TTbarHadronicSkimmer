@@ -23,6 +23,7 @@ def _as_paths(paths: Iterable[str | Path]) -> list[Path]:
 
 _METADATA_KEYS = {
     "analysisCategories",
+    "cutflow_table_steps",
     "sample_metadata",
     "normalization",
 }
