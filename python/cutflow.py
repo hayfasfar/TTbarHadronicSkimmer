@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Mapping
 
 
@@ -129,7 +130,7 @@ def cutflow_step_metadata(anacats=None):
         steps.append(
             {
                 "key": f"category_{label}",
-                "label": f"Category {label}",
+                "label": category_label(label),
                 "group": "Analysis category",
                 "denominator_key": denominator_key,
                 "fallback_denominator_key": fallback_denominator_key,
@@ -137,6 +138,52 @@ def cutflow_step_metadata(anacats=None):
             }
         )
     return steps
+
+
+def category_label(label):
+    """Return a reader-facing label for compact analysis category names."""
+
+    raw_label = str(label)
+    exact_labels = {
+        "atcen": "Antitag, central rapidity",
+        "atfwd": "Antitag, forward rapidity",
+        "2tcen": "Two top-tagged jets, central rapidity",
+        "2tfwd": "Two top-tagged jets, forward rapidity",
+    }
+    if raw_label in exact_labels:
+        return exact_labels[raw_label]
+
+    tag_label = None
+    remainder = raw_label
+    if raw_label.startswith("at"):
+        tag_label = "Antitag"
+        remainder = raw_label[2:]
+    elif raw_label.startswith("2t"):
+        tag_label = "Two top-tagged jets"
+        remainder = raw_label[2:]
+
+    region_label = None
+    if remainder.endswith("cen"):
+        region_label = "central rapidity"
+        remainder = remainder[:-3]
+    elif remainder.endswith("fwd"):
+        region_label = "forward rapidity"
+        remainder = remainder[:-3]
+
+    btag_label = None
+    btag_match = re.fullmatch(r"(\d+)b", remainder)
+    if btag_match:
+        n_btags = int(btag_match.group(1))
+        noun = "b-tag" if n_btags == 1 else "b-tags"
+        btag_label = f"{n_btags} {noun}"
+        remainder = ""
+
+    pieces = [piece for piece in (tag_label, btag_label, region_label) if piece]
+    if pieces and not remainder:
+        return ", ".join(pieces)
+    if pieces:
+        return ", ".join(pieces + [raw_label])
+    return f"Category {raw_label}"
 
 
 def _plain_mapping(value):
@@ -323,7 +370,7 @@ def format_markdown_table(rows, title=None, normalization=None):
         return "No cutflow rows found."
 
     weight_label = rows[0].get("weight_label")
-    headers = ["Group", "Step", "Events"]
+    headers = ["Step", "Events"]
     if weight_label:
         headers.append(weight_label)
     headers.extend(["Eff. prev [%]", "Eff. total [%]"])
@@ -338,7 +385,6 @@ def format_markdown_table(rows, title=None, normalization=None):
     lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
     for row in rows:
         cells = [
-            row["group"],
             row["step"],
             _format_number(row["events"], precision=0),
         ]
@@ -376,11 +422,11 @@ def format_latex_table(rows, caption=None, label=None, normalization=None):
         return "% No cutflow rows found."
 
     weight_label = rows[0].get("weight_label")
-    headers = ["Group", "Step", "Events"]
+    headers = ["Step", "Events"]
     if weight_label:
         headers.append(weight_label)
     headers.extend([r"Eff. prev [\%]", r"Eff. total [\%]"])
-    alignment = "llr" + ("r" if weight_label else "") + "rr"
+    alignment = "lr" + ("r" if weight_label else "") + "rr"
 
     lines = [
         r"\begin{table}[htbp]",
@@ -401,7 +447,6 @@ def format_latex_table(rows, caption=None, label=None, normalization=None):
     ])
     for row in rows:
         cells = [
-            _latex_escape(row["group"]),
             _latex_escape(row["step"]),
             _format_number(row["events"], precision=0),
         ]

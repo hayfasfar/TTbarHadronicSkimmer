@@ -43,7 +43,9 @@ def _render_one(path, args, output_format):
         weight_mode=args.weight_mode,
         include_zero=args.include_zero,
     )
-    normalization = None if args.no_normalization_note else cutflow_normalization_text(output)
+    normalization = None
+    if not args.no_normalization_note and args.weight_mode == "scaled":
+        normalization = cutflow_normalization_text(output)
     title = _default_title(path, args.title)
 
     if output_format == "markdown":

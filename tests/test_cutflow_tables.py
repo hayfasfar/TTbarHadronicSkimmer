@@ -4,7 +4,7 @@ import unittest
 
 sys.path.append(os.path.join(os.getcwd(), "python"))
 
-from cutflow import build_cutflow_rows, format_latex_table, format_markdown_table  # noqa: E402
+from cutflow import category_label, build_cutflow_rows, format_latex_table, format_markdown_table  # noqa: E402
 
 
 class CutflowTableFormattingTest(unittest.TestCase):
@@ -55,7 +55,8 @@ class CutflowTableFormattingTest(unittest.TestCase):
         markdown = format_markdown_table(rows, title="Cutflow")
         latex = format_latex_table(rows, caption="Cutflow")
 
-        self.assertIn("| Group | Step | Events | Yield |", markdown)
+        self.assertIn("| Step | Events | Yield |", markdown)
+        self.assertNotIn("| Group |", markdown)
         self.assertIn("Input events", markdown)
         self.assertIn(r"\begin{table}", latex)
         self.assertIn("Input events", latex)
@@ -85,8 +86,15 @@ class CutflowTableFormattingTest(unittest.TestCase):
         self.assertIn("preselection", [row["key"] for row in rows])
         self.assertIn("ttbarcand", [row["key"] for row in rows])
         self.assertIn("category_2t0bcen", [row["key"] for row in rows])
+        self.assertEqual(rows[-1]["step"], "Two top-tagged jets, 0 b-tags, central rapidity")
         self.assertEqual(rows[-1]["weighted"], 50.0)
         self.assertAlmostEqual(rows[-1]["eff_prev_percent"], 25.0)
+
+    def test_compact_category_labels_are_spelled_out(self):
+        self.assertEqual(category_label("atcen"), "Antitag, central rapidity")
+        self.assertEqual(category_label("atfwd"), "Antitag, forward rapidity")
+        self.assertEqual(category_label("2tcen"), "Two top-tagged jets, central rapidity")
+        self.assertEqual(category_label("2tfwd"), "Two top-tagged jets, forward rapidity")
 
 
 if __name__ == "__main__":
