@@ -108,8 +108,6 @@ thresholds from QCD mis-tag targets, then reports the matched-TTbar signal
 efficiency at those thresholds. It writes a histogram accumulator first, then a
 JSON/plot summary.
 
-
-
 For a local test, cap the input to one file per dataset:
 
 ```bash
@@ -138,7 +136,6 @@ python run_toptag_wp.py \
   --env casa \
   --out outputs/toptag_wp_2024_full.coffea
 ```
-
 
 Run data separately when you want the discriminator Data/MC check:
 
@@ -175,6 +172,91 @@ The processor saves a `.coffea` file per dataset/era to `outputs/dy/`. Files are
 outputs/dy/TTbar_2024_noSyst_test.coffea
 outputs/dy/TTbar_2024_ntuple.coffea       # when --ntuple is set
 ```
+
+## 2DAlphabet ROOT Inputs for Background Estimation
+
+After the processor has produced the `mtt_vs_mt` histograms in `outputs/dy/`,
+use [`plots/make2Drootfiles.py`](plots/make2Drootfiles.py) to convert the coffea
+histograms into ROOT `TH2D` inputs for the 2DAlphabet background-estimation
+workflow. The script sums matching coffea files for each sample and writes
+central/forward pass/fail histograms to `outputs/twodalphabet/`.
+
+For the current 2024 local files, where QCD inputs may not be present yet, run:
+
+```bash
+python plots/make2Drootfiles.py \
+  --year 2024 \
+  --coffea-dir outputs/dy \
+  --out-dir outputs/twodalphabet \
+  --data-pattern "data_2024_*.coffea" \
+  --ttbar-pattern "TTbar_2024*.coffea" \
+  --signal-pattern "ZPrime4000*_2024*.coffea" \
+  --signal-label signalRSGluon4000 \
+  --skip-qcd
+```
+
+This writes files like:
+
+```text
+outputs/twodalphabet/TTbarAllHad24_Data.root
+outputs/twodalphabet/TTbarAllHad24_TTbar.root
+outputs/twodalphabet/TTbarAllHad24_signalRSGluon4000.root
+```
+
+Each ROOT file contains the nominal 2DAlphabet region histograms:
+
+```text
+MttvsMtCen24Pass
+MttvsMtCen24Fail
+MttvsMtFwd24Pass
+MttvsMtFwd24Fail
+```
+
+If QCD pT-bin coffea files are available, omit `--skip-qcd` and set
+`--qcd-pattern` if the filenames differ from the default
+`QCD_<year>*_PT-*to*_noSyst.coffea`. To write systematic-shift histograms in
+addition to nominal, add `--include-systs`.
+
+Check the output layout with:
+
+```bash
+rootls -t outputs/twodalphabet/TTbarAllHad24_signalRSGluon4000.root
+```
+
+## Cutflow Tables
+
+Use `make_cutflow_table.py` to turn a processor `.coffea` output into a
+Markdown or LaTeX cutflow table. For a plain event-count table, run:
+
+```bash
+env XDG_CACHE_HOME=/tmp MPLCONFIGDIR=/tmp/mplconfig \
+  python make_cutflow_table.py \
+  outputs/dy/TTbar_2024_inclusive.coffea \
+  --format markdown \
+  --weight-mode none \
+  --title TTbar_2024_inclusive \
+  -o cutflows/TTbar_2024_inclusive_cutflow.md
+```
+
+`--weight-mode none` prints only event counts and efficiencies. Use
+`--weight-mode raw` to add the raw generator/LHE `sumw`, or
+`--weight-mode scaled` to add the luminosity-scaled yield when normalization
+metadata is available.
+
+To write both Markdown and LaTeX versions:
+
+```bash
+env XDG_CACHE_HOME=/tmp MPLCONFIGDIR=/tmp/mplconfig \
+  python make_cutflow_table.py \
+  outputs/dy/TTbar_2024_inclusive.coffea \
+  --format both \
+  --weight-mode none \
+  -o cutflows/TTbar_2024_inclusive_cutflow
+```
+
+This writes `cutflows/TTbar_2024_inclusive_cutflow.md` and
+`cutflows/TTbar_2024_inclusive_cutflow.tex`. Compact category names are expanded
+for readability, e.g. `atcen` becomes `Antitag, central rapidity`.
 
 ## Flat ntuple (ROOT TTree)
 

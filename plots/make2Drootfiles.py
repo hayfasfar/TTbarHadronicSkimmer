@@ -182,6 +182,15 @@ def _year_label(year: str) -> str:
     return year.replace("20", "").replace("all", "")
 
 
+def _root_category_label(cat: str) -> str:
+    """Return the 2DAlphabet ROOT-key category label for an analysis category."""
+    labels = {
+        "cen": "Cen",
+        "fwd": "Fwd",
+    }
+    return labels.get(cat, cat)
+
+
 def _print_time(seconds: float) -> None:
     minutes, sec = divmod(seconds, 60)
     hours, minutes = divmod(minutes, 60)
@@ -257,10 +266,11 @@ def main() -> None:
         sample_systs = ["nominal"] if label == "Data" else syst_labels
         with uproot.recreate(out_path) as fout:
             for cat, (pass_ids, fail_ids) in cat_ids.items():
+                root_cat = _root_category_label(cat)
                 for syst in sample_systs:
                     suffix = _syst_suffix(syst)
-                    pass_name = f"MttvsMt{cat}{year_label}Pass{suffix}"
-                    fail_name = f"MttvsMt{cat}{year_label}Fail{suffix}"
+                    pass_name = f"MttvsMt{root_cat}{year_label}Pass{suffix}"
+                    fail_name = f"MttvsMt{root_cat}{year_label}Fail{suffix}"
                     fout[pass_name] = _sum_hists(outputs, args.hist, pass_ids, syst)
                     fout[fail_name] = _sum_hists(outputs, args.hist, fail_ids, syst)
         written.append(out_path)
