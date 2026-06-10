@@ -86,18 +86,20 @@ class Run3WeightManager:
         jet0_ptbins = np.digitize(ak.to_numpy(jet0.p4.pt), ptbins) - 1
         jet1_ptbins = np.digitize(ak.to_numpy(jet1.p4.pt), ptbins) - 1
 
-        ttagSFNom_1 = np.where(jet0_ptbins == 1, nomsf[1], 1.0) * np.where((jet1_ptbins == 1 & ttag2), nomsf[1], 1.0) * np.where((jet1_ptbins == 1 & antitag), nomsf_fail[1], 1.0)
-        ttagSFUp_1 = np.where(jet0_ptbins == 1, upsf[1], 1.0) * np.where((jet1_ptbins == 1 & ttag2), upsf[1], 1.0) * np.where((jet1_ptbins == 1 & antitag), upsf_fail[1], 1.0)
-        ttagSFDown_1 = np.where(jet0_ptbins == 1, downsf[1], 1.0) * np.where((jet1_ptbins == 1 & ttag2), downsf[1], 1.0) * np.where((jet1_ptbins == 1 & antitag), downsf_fail[1], 1.0)
-
-        ttagSFNom_2 = np.where(jet0_ptbins == 2, nomsf[2], 1.0) * np.where((jet1_ptbins == 2 & ttag2), nomsf[2], 1.0) * np.where((jet1_ptbins == 2 & antitag), nomsf_fail[2], 1.0)
-        ttagSFUp_2 = np.where(jet0_ptbins == 2, upsf[2], 1.0) * np.where((jet1_ptbins == 2 & ttag2), upsf[2], 1.0) * np.where((jet1_ptbins == 2 & antitag), upsf_fail[2], 1.0)
-        ttagSFDown_2 = np.where(jet0_ptbins == 2, downsf[2], 1.0) * np.where((jet1_ptbins == 2 & ttag2), downsf[2], 1.0) * np.where((jet1_ptbins == 2 & antitag), downsf_fail[2], 1.0)
-
-        ttagSFNom_3 = np.where(jet0_ptbins == 3, nomsf[3], 1.0) * np.where((jet1_ptbins == 3 & ttag2), nomsf[3], 1.0) * np.where((jet1_ptbins == 3 & antitag), nomsf_fail[3], 1.0)
-        ttagSFUp_3 = np.where(jet0_ptbins == 3, upsf[3], 1.0) * np.where((jet1_ptbins == 3 & ttag2), upsf[3], 1.0) * np.where((jet1_ptbins == 3 & antitag), upsf_fail[3], 1.0)
-        ttagSFDown_3 = np.where(jet0_ptbins == 3, downsf[3], 1.0) * np.where((jet1_ptbins == 3 & ttag2), downsf[3], 1.0) * np.where((jet1_ptbins == 3 & antitag), downsf_fail[3], 1.0)
-
-        weights.add("ttag_pt1", weight=ttagSFNom_1, weightUp=ttagSFUp_1, weightDown=ttagSFDown_1)
-        weights.add("ttag_pt2", weight=ttagSFNom_2, weightUp=ttagSFUp_2, weightDown=ttagSFDown_2)
-        weights.add("ttag_pt3", weight=ttagSFNom_3, weightUp=ttagSFUp_3, weightDown=ttagSFDown_3)
+        for ibin in range(1, 4):
+            nom = (
+                np.where(jet0_ptbins == ibin, nomsf[ibin], 1.0)
+                * np.where((jet1_ptbins == ibin) & ttag2, nomsf[ibin], 1.0)
+                * np.where((jet1_ptbins == ibin) & antitag, nomsf_fail[ibin], 1.0)
+            )
+            up = (
+                np.where(jet0_ptbins == ibin, upsf[ibin], 1.0)
+                * np.where((jet1_ptbins == ibin) & ttag2, upsf[ibin], 1.0)
+                * np.where((jet1_ptbins == ibin) & antitag, upsf_fail[ibin], 1.0)
+            )
+            down = (
+                np.where(jet0_ptbins == ibin, downsf[ibin], 1.0)
+                * np.where((jet1_ptbins == ibin) & ttag2, downsf[ibin], 1.0)
+                * np.where((jet1_ptbins == ibin) & antitag, downsf_fail[ibin], 1.0)
+            )
+            weights.add(f"ttag_pt{ibin}", weight=nom, weightUp=up, weightDown=down)

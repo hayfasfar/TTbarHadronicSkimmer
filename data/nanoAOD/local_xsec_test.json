@@ -1,0 +1,17 @@
+{
+    "2024": {
+        "4000": {
+            "files": [
+                "store/mc/7d8ed602-89c4-4086-82b9-07528fcc7fcb.root",
+                "store/mc/712cf530-ef49-4056-87c6-b7527903ba80.root"
+            ],
+            "metadata": {
+                "sample": "ZPrimeLocal",
+                "subsample": "4000",
+                "year": "2024",
+                "is_mc": true,
+                "xsec_pb": 1.0
+            }
+        }
+    }
+}
